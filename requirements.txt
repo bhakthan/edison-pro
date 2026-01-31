@@ -1,0 +1,52 @@
+# EDISON & EDISON PRO - Engineering Diagram Analysis System
+# Requirements file for Python dependencies
+
+# Core Dependencies
+openai>=2.0.1              # Azure OpenAI API client (required for both versions)
+python-dotenv>=1.0.0        # Environment variable management
+
+# PDF Processing (EDISON standard version)
+PyMuPDF>=1.26.4             # PDF text extraction and rendering (fitz module)
+pillow>=11.3.0              # Image processing
+
+# Vector Database & Embeddings
+numpy>=1.24.0               # Numerical operations for embeddings
+azure-search-documents==11.6.0b4  # Azure AI Search SDK
+azure-ai-documentintelligence==1.0.2  # Azure Document Intelligence (advanced OCR & layout analysis)
+azure-storage-blob>=12.26.0  # Azure Blob Storage for cloud file input/output
+azure-identity>=1.15.0      # Azure authentication (for managed identity support)
+azure-ai-projects>=1.0.0  # Azure AI Agents with Code Interpreter (GPT-4.1)
+pandas>=2.0.0               # Data manipulation for Code Agent (tables, exports)
+
+# Phase 3 Enhancements: Visualization & Reporting
+plotly==6.3.1              # Interactive charts (risk gauges, consensus, scenarios, trends)
+matplotlib>=3.8.0          # Static charts (fallback visualization)
+seaborn>=0.13.0            # Statistical visualization (heatmaps, distributions)
+# Optional: kaleido>=0.2.1  # Static image export for Plotly (PDF reports)
+
+# Graph & Network Analysis
+networkx>=3.0               # Component relationship graphs
+
+# Token Counting
+tiktoken>=0.11.0             # Token counting for cost estimation
+
+# Optional but Recommended
+# markitdown                # Enhanced OCR for image text extraction (EDISON PRO)
+                            # Uncomment if you need advanced OCR capabilities
+                            # Install separately: pip install markitdown
+
+# Development & Testing (Optional)
+# pytest>=7.4.0             # Unit testing
+# black>=23.0.0             # Code formatting
+# flake8>=6.0.0             # Linting
+
+# Platform-specific notes:
+# - On Windows, PyMuPDF may require Visual C++ redistributables
+# - chromadb may have grpcio version conflicts; if issues occur:
+#   pip uninstall grpcio grpcio-status chromadb -y
+#   pip install grpcio==1.48.2
+#   pip install chromadb --no-deps
+#   pip install chroma-hnswlib pydantic>=1.9.0 posthog>=2.4.0
+
+# Minimum Python Version: 3.8+
+# Recommended Python Version: 3.10 or 3.11
