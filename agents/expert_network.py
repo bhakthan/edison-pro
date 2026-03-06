@@ -325,6 +325,17 @@ Communication style: Practical, field-focused, reality-check oriented."""
         """Get opinion from a single expert"""
         
         expert = self.experts[expert_id]
+
+        # Negative-prompting constraint block applied to every expert persona
+        expert_constraints = """
+EXPERT REVIEW CONSTRAINTS — DO NOT:
+- Cite specific code section numbers (NEC, ASME, OSHA) you cannot trace to the diagram context provided
+- Assume component ratings not explicitly shown in the diagram
+- State "appears to comply" without identifying the exact standard clause and version
+- Assign confidence > 0.85 without at least 3 independent supporting observations
+- Confuse IEC and NEMA equipment naming conventions
+- Generalise a finding from one sub-system to the whole design without diagram evidence
+IF UNSURE about a specific value or code clause: flag it as "requires field verification"."""
         
         # Build expert-specific prompt
         prompt = f"""{expert['system_prompt']}
@@ -340,7 +351,8 @@ Provide your professional assessment covering:
 4. Confidence in your assessment (0-100%)
 5. Rationale for your opinion
 
-Be thorough and critical. If you identify issues, be specific about what needs to change."""
+Be thorough and critical. If you identify issues, be specific about what needs to change.
+{expert_constraints}"""
 
         try:
             # Call o3-pro with expert persona
@@ -495,6 +507,7 @@ Each expert should:
 3. Propose a compromise if possible
 4. Update confidence based on discussion
 
+DO NOT introduce code citations or component ratings not visible in the diagram context.
 Facilitate a constructive debate and reach a resolution."""
             
             try:

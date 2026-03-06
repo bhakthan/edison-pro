@@ -126,12 +126,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============================================================================
+# Rolling Conversation Summarizer
+# Maintains a compressed session summary so every ask_question_pro call
+# has access to the full prior conversation context without blowing token budgets.
+# ============================================================================
+class ConversationSummarizer:
+    """
+    Maintains a compressed rolling summary of the Q&A session.
+    When the raw exchange log grows beyond max_raw_pairs, it summarises the
+    oldest entries into a compact paragraph and retains only the most recent
+    exchanges verbatim.
+    """
+    MAX_RAW_PAIRS = 6   # keep last N exchanges verbatim
+    SUMMARY_TRIGGER = 8  # summarise when we exceed this many pairs
+
+    def __init__(self):
+        self.summary: str = ""
+        self.recent_exchanges: list = []  # List of (question, answer) tuples
+
+    def add_exchange(self, question: str, answer: str):
+        self.recent_exchanges.append((question, answer))
+        if len(self.recent_exchanges) > self.SUMMARY_TRIGGER:
+            # Compress the oldest entries; keep the most recent verbatim
+            to_compress = self.recent_exchanges[:-self.MAX_RAW_PAIRS]
+            self.recent_exchanges = self.recent_exchanges[-self.MAX_RAW_PAIRS:]
+            compressed = self._compress(to_compress)
+            self.summary = (self.summary + "\n" + compressed).strip() if self.summary else compressed
+
+    def _compress(self, exchanges: list) -> str:
+        """Build a concise bullet summary of the given exchanges."""
+        lines = ["Prior session findings (compressed):"]
+        for q, a in exchanges:
+            answer_snippet = a[:300].replace("\n", " ") if a else ""
+            lines.append(f"• Q: {q[:120]} → {answer_snippet}")
+        return "\n".join(lines)
+
+    def get_context_block(self) -> str:
+        """Return the context string to prepend to new prompts."""
+        if not self.summary and not self.recent_exchanges:
+            return ""
+        parts = []
+        if self.summary:
+            parts.append(self.summary)
+        if self.recent_exchanges:
+            parts.append("Most recent Q&A exchanges:")
+            for q, a in self.recent_exchanges[-3:]:
+                parts.append(f"Q: {q}\nA: {a[:400]}\n---")
+        return "\nSESSION CONTEXT:\n" + "\n".join(parts) + "\n"
+
+    def reset(self):
+        self.summary = ""
+        self.recent_exchanges = []
+
+
 # Initialize orchestrator (singleton)
 orchestrator = None
 code_agent = None
 flickering_system = None  # Flickering cognitive architecture
 conversation_history = []  # Track Q&A for results page
 generated_files = []  # Track generated files
+conversation_summarizer = ConversationSummarizer()  # Rolling session summary
 
 def get_orchestrator():
     """Get or create orchestrator instance"""
@@ -378,12 +433,16 @@ async def ask_question(request: QuestionRequest):
                 web_search_used=request.use_web_search
             )
         else:
-            # Use o3-pro
-            result = await orch.ask_question_pro(request.question)
+            # Use o3-pro — inject rolling session context then call
+            global conversation_summarizer
+            session_ctx = conversation_summarizer.get_context_block()
+            enriched_question = f"{session_ctx}{request.question}" if session_ctx else request.question
+            result = await orch.ask_question_pro(enriched_question)
             answer = result.get('answer', '')
             
-            # Track conversation
+            # Track conversation in both history list and rolling summarizer
             conversation_history.append((request.question, answer))
+            conversation_summarizer.add_exchange(request.question, answer)
             
             return QuestionResponse(
                 answer=answer,

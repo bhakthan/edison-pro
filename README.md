@@ -1,22 +1,22 @@
 # Engineering Diagram Analysis System (EDISON PRO) - Srikanth Bhakthan - Microsoft
 
-Advanced Multi-Agent System for analyzing complex engineering diagrams using Azure OpenAI o3-pro with enhanced reasoning capabilities.
+Advanced Multi-Agent System for analyzing complex engineering diagrams using Azure OpenAI gpt-5-pro with enhanced reasoning capabilities.
 
 ## 🎯 Overview
 
-EDISON PRO is a sophisticated multi-agent system that analyzes engineering diagrams (electrical schematics, mechanical assemblies, P&IDs, civil plans, structural drawings, etc.) and provides intelligent interpretation, component extraction, and interactive question-answering capabilities powered by Azure OpenAI's **o3-pro model** with the Responses API.
+EDISON PRO is a sophisticated multi-agent system that analyzes engineering diagrams (electrical schematics, mechanical assemblies, P&IDs, civil plans, structural drawings, etc.) and provides intelligent interpretation, component extraction, and interactive question-answering capabilities powered by Azure OpenAI's **gpt-5-pro model** with the Responses API.
 
 ### Key Features
 
-- **🧠 Advanced Reasoning with o3-pro**: Leverages Azure OpenAI's o3-pro model with enhanced reasoning capabilities via Responses API
+- **🧠 Advanced Reasoning with gpt-5-pro**: Leverages Azure OpenAI's gpt-5-pro model with enhanced reasoning capabilities via Responses API
 - **🔍 Intelligent Planning Agent**: Auto-detects disciplines, drawing types, complexity, and key features before deep analysis
 - **🎯 Reasoning Effort Control**: Adjustable reasoning levels (low/medium/high/maximum) for optimal quality vs. speed trade-offs
 - **🌐 Hybrid Domain Support**: Multi-discipline analysis (civil+electrical, mechanical+electrical+pid, etc.) with domain-specific expertise merging
 - **🖼️ Direct Image Processing**: Analyzes images directly from folders, bypassing PDF protection issues
-- **� Parallel Processing**: Concurrent page processing for 3-5x speed improvement
+- **⚡ Parallel Processing**: Concurrent page processing for 3-5x speed improvement
 - **🧠 Smart Chunking**: Intelligent boundary detection based on diagram types and logical sections
 - **📄 Multi-Page Support**: Seamless handling of large multi-page engineering document sets
-- **👁️ Vision-Based Analysis**: Uses o3-pro vision to extract visual elements and symbols with engineering significance
+- **👁️ Vision-Based Analysis**: Uses gpt-5-pro vision to extract visual elements and symbols with engineering significance
 - **� Domain-Specific Interpretation**: Applies engineering expertise (electrical, mechanical, P&ID, civil, structural)
 - **� Azure AI Search Integration**: Hybrid vector+keyword search for intelligent context retrieval
 - **� Cross-Reference Resolution**: Links related sections across multi-sheet drawings
@@ -28,10 +28,11 @@ EDISON PRO is a sophisticated multi-agent system that analyzes engineering diagr
 - **� Quality Assessment**: Drawing clarity, completeness, and standards compliance evaluation
 - **⚡ Intelligent Timeout Management**: Dynamic timeouts based on reasoning effort (90s-1800s)
 - **🛡️ Robust Error Handling**: Graceful fallbacks with comprehensive logging
-- **🤖 Hybrid Agent System (NEW)**: Intelligent routing between o3-pro (understanding) and GPT-4.1 Code Agent (data transformation)
+- **🧬 Advanced Prompting Engine (NEW)**: Six production-grade prompting techniques — negative constraints, few-shot history injection, self-critique loops, rolling conversation summarization, semantic reranking, and expert panel guardrails
+- **🤖 Hybrid Agent System (NEW)**: Intelligent routing between gpt-5-pro (understanding) and GPT-4.1 Code Agent (data transformation)
 - **📊 Data Transformation**: Automatic table generation, calculations, CSV exports, and chart creation
 - **💡 Smart Detection**: Keywords and pattern matching to route questions to appropriate AI agent
-- **💰 Cost Optimization**: 90% cost reduction by routing understanding questions to o3-pro vs. code agent
+- **💰 Cost Optimization**: 90% cost reduction by routing understanding questions to gpt-5-pro vs. code agent
 - **📋 Analysis Templates (NEW)**: Predefined workflows for common scenarios with guided question sequences
 - **🧠 Memory Atlas (NEW)**: Continuous learning system that stores patterns as 512-dimensional embeddings for instant recall
 - **🌊 Flickering Cognitive Analysis (NEW)**: Brain-inspired system that oscillates between current perception and historical patterns to detect novelty
@@ -74,7 +75,7 @@ EDISON PRO includes **Analysis Templates** - predefined workflows for common eng
 
 #### 🎯 Template Features
 - **Guided Workflows**: Step-by-step question sequences
-- **Smart Routing**: Automatic o3-pro/Code Agent selection per question
+- **Smart Routing**: Automatic gpt-5-pro/Code Agent selection per question
 - **Quality Checklists**: Built-in verification lists for completeness
 - **Professional Outputs**: Tables, charts, CSV exports, PDF reports
 - **Time Estimates**: Know completion time upfront
@@ -187,7 +188,7 @@ POST /generate-report       # Create HTML reports
 EDISON PRO now features a **hybrid agent system** that intelligently routes questions between two specialized AI agents:
 
 #### 🧠 Agent Selection
-- **o3-pro (LOW reasoning)** → Understanding questions, engineering judgment, "why/how" questions
+- **gpt-5-pro (LOW reasoning)** → Understanding questions, engineering judgment, "why/how" questions
   - Cost: ~$0.001 per query
   - Use: "Why is this rated at 100A?", "What standard applies?", "Explain the safety interlock"
   
@@ -215,7 +216,7 @@ The system automatically detects when a question requires data transformation vs
 "Export all components to CSV with ratings"
 "Create a chart of voltage distribution"
 
-# Understanding (uses o3-pro)
+# Understanding (uses gpt-5-pro)
 "What is the voltage rating of transformer T-101?"
 "Why is this circuit breaker rated at 100A?"
 "Explain the purpose of circuit C-401"
@@ -332,6 +333,92 @@ Perfect for impressive demonstrations:
 
 ---
 
+### 🧬 Advanced Prompting Engine
+
+EDISON PRO applies six production-grade prompting techniques across its agent pipeline to substantially reduce hallucination, improve multi-turn coherence, and surface higher-quality engineering analysis.
+
+#### 1. 🚫 Negative Prompting / Engineering Constraints
+
+A `ENGINEERING_CONSTRAINTS` block is appended to **every** gpt-5-pro call. It enumerates the exact failure modes that LLMs exhibit on engineering diagrams and instructs the model to avoid them:
+
+- No citing NEC / ASME / OSHA / NFPA section numbers that cannot be traced to the provided diagram context
+- No assuming component ratings not explicitly shown in the diagram
+- No conflating IEC and NEMA naming conventions
+- No generalising findings from one sub-system to the whole design
+- Confidence scores capped at 0.85 unless ≥3 independent evidence chunks support the claim
+- Explicit "insufficient diagram data" statement required when evidence is absent
+
+The same principle is applied inside every expert persona in the **Expert Network** agent, preventing domain specialists from hallucinating code clauses during their review.
+
+#### 2. 💬 Few-Shot History Injection
+
+The orchestrator maintains a rolling `qa_history` list (capped at 10 pairs). Before each new `ask_question_pro` call the last 3 Q&A exchanges are serialised into an **EXAMPLES FROM PRIOR EXCHANGES** block at the top of the prompt. This:
+
+- Grounds new answers in terminology and component IDs already established in the session
+- Provides in-context examples of the expected analytical rigour
+- Works automatically — no configuration required
+
+#### 3. 🔍 Self-Critique Loop
+
+A new `ask_with_self_critique()` method on the orchestrator runs a **two-pass critique-revision cycle**:
+
+1. **Pass 1** — generate the initial analysis via `ask_question_pro`
+2. **Pass 2** — submit the answer to a QA-reviewer prompt that checks for unsupported citations, hallucinated ratings, safety omissions, overconfident claims, and ambiguous designators
+3. If issues are found the revised answer replaces the original; otherwise the original is returned unchanged
+
+Opt-in per call — use for high-stakes outputs such as anomaly predictions, counterfactual recommendations, and revision significance assessments:
+
+```python
+result = await orchestrator.ask_with_self_critique(
+    "Is the grounding system compliant?",
+    domain="electrical"
+)
+```
+
+#### 4. 🔄 Rolling Conversation Summarizer
+
+The `ConversationSummarizer` class in `api.py` maintains a compressed summary of the entire Q&A session so the model retains full context without unbounded token growth:
+
+- Keeps the last **6 exchanges verbatim** (configurable)
+- Compresses older exchanges into concise bullet-point paragraphs
+- Prepends `SESSION CONTEXT:` to every gpt-5-pro `/ask` request
+- Resets on demand (e.g., when a new document is uploaded)
+
+This transforms EDISON PRO from a stateless Q&A tool into a coherent multi-turn session where answers build on prior findings.
+
+#### 5. 🏆 Semantic Reranking (Azure AI Search)
+
+`PatternStorage.search_patterns()` in `agents/azure_search_integration.py` now uses Azure AI Search's **semantic reranker** as a second-pass filter on top of the initial bi-encoder retrieval:
+
+```
+Bi-encoder retrieval (fast, top-N)  →  Semantic reranker (precise, top-K)
+```
+
+- Enabled via `QueryType.SEMANTIC` with `query_caption="extractive"` and `query_answer="extractive"`
+- Results sorted by `@search.reranker_score` for best-first ordering
+- Falls back gracefully to keyword search if the semantic configuration is absent on the index
+
+#### 6. 🧑‍🔬 Expert Panel Guardrails
+
+Every expert persona call in `ExpertNetworkAgent` now includes a tailored constraint block that prevents the specific hallucination patterns relevant to that expert's domain:
+
+- Prevents citing specific code clauses not traceable to diagram context
+- Requires "requires field verification" statements when values are uncertain
+- Applied to both individual opinions and the inter-expert debate prompts
+
+#### 📊 Combined Impact
+
+| Technique | Files Modified | Primary Benefit |
+|---|---|---|
+| Engineering constraints | `edisonpro.py` | Eliminates hallucinated standard citations |
+| Few-shot injection | `edisonpro.py` | Improves answer consistency across a session |
+| Self-critique loop | `edisonpro.py` | Catches errors before they reach the user |
+| Conversation summarizer | `api.py` | Enables coherent multi-turn reasoning |
+| Semantic reranking | `agents/azure_search_integration.py` | Better context, lower token usage |
+| Expert guardrails | `agents/expert_network.py` | Reduces expert hallucination in panel reviews |
+
+---
+
 ## 📋 Requirements
 
 ### Python Packages
@@ -341,7 +428,7 @@ pip install -r requirements.txt
 ```
 
 **Key Packages:**
-- `openai`: Azure OpenAI o3-pro Responses API
+- `openai`: Azure OpenAI gpt-5-pro Responses API
 - `azure-ai-formrecognizer`: Azure Document Intelligence for advanced OCR & layout analysis
 - `azure-search-documents`: Azure AI Search for hybrid vector+keyword search
 - `azure-storage-blob>=12.19.0`: Azure Blob Storage for cloud file operations
@@ -355,26 +442,26 @@ pip install -r requirements.txt
 
 ### Azure Services Required
 
-- **Azure OpenAI** resource with **o3-pro deployment**
+- **Azure OpenAI** resource with **gpt-5-pro deployment**
 - API key and endpoint configured for Responses API
 - Embedding deployment (text-embedding-ada-002 or newer)
 - **Azure AI Search** resource for hybrid vector+keyword search
 - **Azure Document Intelligence** (Form Recognizer) for advanced OCR and layout analysis
 - **Azure Blob Storage** (optional) for cloud-based file input/output
 - **Azure AI Projects** (optional) for Code Agent with GPT-4.1 + Code Interpreter
-- Recommended: o3-pro with enhanced reasoning capabilities
+- Recommended: gpt-5-pro with enhanced reasoning capabilities
 
 ## ⚙️ Setup
 
 ### 1. Create Environment File
 
-Create a `.env` file with o3-pro configuration:
+Create a `.env` file with gpt-5-pro configuration:
 
 ```env
-# Azure OpenAI o3-pro Configuration (Responses API)
+# Azure OpenAI gpt-5-pro Configuration (Responses API)
 AZURE_OPENAI_PRO_ENDPOINT=https://your-resource.openai.azure.com/openai/v1/
 AZURE_OPENAI_API_KEY=your-api-key-here
-AZURE_OPENAI_PRO_DEPLOYMENT_NAME=o3-pro
+AZURE_OPENAI_PRO_DEPLOYMENT_NAME=gpt-5-pro
 
 # Embeddings Configuration (Standard API)
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
@@ -424,10 +511,10 @@ ENABLE_SMART_CHUNKING=true
 
 **Important Notes:**
 - `AZURE_OPENAI_PRO_ENDPOINT` should end with `/openai/v1/` for Responses API
-- o3-pro uses the OpenAI Responses API (NOT standard Azure OpenAI Chat Completions)
+- gpt-5-pro uses the OpenAI Responses API (NOT standard Azure OpenAI Chat Completions)
 - Embeddings still use the standard AsyncAzureOpenAI client with `api_version`
 - Azure Document Intelligence provides superior OCR and layout analysis for engineering diagrams
-- Two separate clients are required: OpenAI client for o3-pro, AsyncAzureOpenAI for embeddings
+- Two separate clients are required: OpenAI client for gpt-5-pro, AsyncAzureOpenAI for embeddings
 - **Code Agent is optional**: System works without it, but data transformation features require Azure AI Projects configuration
 
 ### 2. Create Azure AI Search Index
@@ -509,7 +596,7 @@ Or use comma-separated domains: `--domain civil,electrical` for the same effect.
 ### Method 1: Command Line (Recommended)
 
 ```bash
-# Analyze PDF with o3-pro reasoning
+# Analyze PDF with gpt-5-pro reasoning
 python edisonpro.py --pdf electrical_schematic.pdf --domain electrical --reasoning-effort high
 
 # Analyze images directly (bypasses PDF protection)
@@ -555,7 +642,7 @@ EDISON PRO automatically displays a summary of interpretations after analysis:
 | `--keep-temp-files` | Keep temporary files after blob analysis | Flag | `false` |
 | `--domain` | Engineering domain | `electrical`, `mechanical`, `pid`, `civil`, `structural`, `general` | `general` |
 | `--interactive` | Enable enhanced Q&A mode after analysis | Flag (no value) | `false` |
-| `--reasoning-effort` | o3-pro reasoning level | `low`, `medium`, `high`, `maximum` | `high` |
+| `--reasoning-effort` | gpt-5-pro reasoning level | `low`, `medium`, `high`, `maximum` | `high` |
 
 ### Method 2: Python Code
 
@@ -629,19 +716,19 @@ python edisonpro_ui.py
 Launch the Gradio-based chat interface for interactive diagram questions. The UI automatically:
 
 - Connects to Azure AI Search, commits any staged documents, and streams context directly from the remote index when the local cache is empty.
-- Fixes the o3-pro reasoning effort to `LOW` for responsive turn times while still surfacing reasoning chains.
+- Fixes the gpt-5-pro reasoning effort to `LOW` for responsive turn times while still surfacing reasoning chains.
 - Falls back to the raw model output whenever structured parsing fails so you can see exactly what the model returned.
 - Provides engineering-focused sample question buttons that populate the textbox for quick starts.
 - Displays a gradient engineering header and a live status panel showing connection health, chunk counts, and reasoning effort.
 - **NEW: 📦 Blob Storage tab** - Browse and analyze files directly from Azure Blob Storage with real-time file listing and analysis.
-- **NEW: 🤖 Hybrid Agent System** - Intelligently routes questions between o3-pro (understanding) and Code Agent (data transformation) with status indicators and data output area for tables/downloads.
+- **NEW: 🤖 Hybrid Agent System** - Intelligently routes questions between gpt-5-pro (understanding) and Code Agent (data transformation) with status indicators and data output area for tables/downloads.
 
 **Code Agent Features in UI:**
 - Status panel shows "✅ Available" or "⚠️ Not configured" based on Azure AI Projects setup
 - Sample data transformation questions displayed (e.g., "Show all transformers as table")
 - Dedicated output areas for generated tables and download buttons
 - Automatic routing: Ask "Show components as table" → Code Agent generates HTML table
-- Cost-efficient: Understanding questions automatically use o3-pro instead of code agent
+- Cost-efficient: Understanding questions automatically use gpt-5-pro instead of code agent
 
 By default the UI listens on `http://localhost:7861` and opens your browser automatically. Run an analysis first so the Azure Search index (or local chunk store) contains documents.
 
@@ -1083,7 +1170,7 @@ flowchart LR
 
     subgraph Phase0["🎯 PHASE 0: INTELLIGENT PLANNING"]
         AutoPlan{"Auto-Planning<br/>Enabled?"}
-        PlanAgent["<b>PlanningAgentPro</b><br/>────────────<br/>• Analyzes first 1-3 pages<br/>• Uses o3-pro LOW reasoning<br/>• Fast reconnaissance (15-30s)"]
+        PlanAgent["<b>PlanningAgentPro</b><br/>────────────<br/>• Analyzes first 1-3 pages<br/>• Uses gpt-5-pro LOW reasoning<br/>• Fast reconnaissance (15-30s)"]
         
         DetectBox["<b>Detection Phase</b><br/>────────────<br/>✓ Disciplines identified<br/>(civil, electrical, mechanical,<br/>P&ID, structural, hybrid)<br/>✓ Drawing types recognized<br/>(single-line, P&ID, plan-profile)<br/>✓ Complexity assessed<br/>(simple/medium/complex)<br/>✓ Key features cataloged<br/>(transformers, instruments, etc.)"]
         
@@ -1102,7 +1189,7 @@ flowchart LR
     end
 
     subgraph Phase1["📄 PHASE 1: DOCUMENT PREPROCESSING"]
-        PreprocessAgent["<b>DocumentPreprocessorPro</b><br/>────────────<br/>• Smart chunking enabled<br/>• Structure analysis with o3-pro<br/>• Parallel page processing<br/>• Metadata extraction"]
+        PreprocessAgent["<b>DocumentPreprocessorPro</b><br/>────────────<br/>• Smart chunking enabled<br/>• Structure analysis with gpt-5-pro<br/>• Parallel page processing<br/>• Metadata extraction"]
         
         ADIBox["<b>Azure Document Intelligence</b><br/>────────────<br/>Priority 1: Layout Analysis<br/>✓ OCR extraction (95-99% accuracy)<br/>✓ Table structure detection<br/>✓ Key-value pairs (title blocks)<br/>✓ Reading order preservation<br/>✓ Bounding box coordinates<br/>✓ Confidence scoring"]
         
@@ -1126,7 +1213,7 @@ flowchart LR
     end
 
     subgraph Phase2["👁️ PHASE 2: VISUAL ELEMENT EXTRACTION"]
-        VisualAgent["<b>VisualElementExtractorPro</b><br/>────────────<br/>• Multi-layer visual analysis<br/>• Uses o3-pro with image input<br/>• Engineering symbol recognition<br/>• Quality assessment"]
+        VisualAgent["<b>VisualElementExtractorPro</b><br/>────────────<br/>• Multi-layer visual analysis<br/>• Uses gpt-5-pro with image input<br/>• Engineering symbol recognition<br/>• Quality assessment"]
         
         ExtractionBox["<b>Visual Analysis</b><br/>────────────<br/>✓ Symbols & components<br/>✓ Lines & connections<br/>✓ Annotations & labels<br/>✓ Spatial relationships<br/>✓ Engineering significance"]
         
@@ -1189,7 +1276,7 @@ flowchart LR
         
         RetrievalAgent["<b>Hybrid Retrieval</b><br/>────────────<br/>• Azure AI Search<br/>• Vector similarity<br/>• BM25 keyword<br/>• Top-K results"]
         
-        AnswerAgent["<b>o3-pro Handler</b><br/>────────────<br/>• LOW reasoning<br/>• 90s timeout<br/>• Reasoning chain<br/>• Evidence extraction"]
+        AnswerAgent["<b>gpt-5-pro Handler</b><br/>────────────<br/>• LOW reasoning<br/>• 90s timeout<br/>• Reasoning chain<br/>• Evidence extraction"]
         
         CodeAgent["<b>Code Agent</b><br/>(GPT-4.1)<br/>────────────<br/>• Python execution<br/>• Tables/Charts<br/>• CSV/Excel export<br/>• Calculations"]
         
@@ -1275,7 +1362,7 @@ flowchart LR
 - Mismatch threshold 0.5 separates known (low) from novel (high)
 
 🤖 **Hybrid Agent System** - Intelligent routing
-- o3-pro for understanding questions (fast, $0.001/query)
+- gpt-5-pro for understanding questions (fast, $0.001/query)
 - Code Agent for data transformation (powerful, $0.01-0.02/query)
 - 90% cost savings through smart detection
 
@@ -1301,7 +1388,7 @@ The user provides either a PDF file, a folder containing images, or an Azure Blo
   - Automatic temp file management
 - Validate file paths and formats
 - Load environment variables (.env file)
-- Initialize Azure OpenAI clients (o3-pro + embeddings)
+- Initialize Azure OpenAI clients (gpt-5-pro + embeddings)
 
 **Blob Storage Benefits:**
 - ☁️ Cloud-native workflow for engineering teams
@@ -1319,7 +1406,7 @@ The user provides either a PDF file, a folder containing images, or an Azure Blo
 
 **Process:**
 1. **Quick Sampling**: Extract first 1-3 pages as images
-2. **Fast Analysis**: Send to o3-pro with LOW reasoning effort (15-30 seconds)
+2. **Fast Analysis**: Send to gpt-5-pro with LOW reasoning effort (15-30 seconds)
 3. **Detection**:
    - Disciplines: civil, electrical, mechanical, P&ID, structural, or hybrid combinations
    - Drawing types: single-line, plan-and-profile, P&ID, connection details, etc.
@@ -1374,7 +1461,7 @@ Recommended Strategy:
    - Save intermediate files: `page_XXX_image.png`, `page_XXX_azure_di.json`, `page_XXX_extracted_text.txt`
 
 2. **Structure Analysis** (per page):
-   - Send page image + extracted text/tables to o3-pro with configured reasoning effort
+   - Send page image + extracted text/tables to gpt-5-pro with configured reasoning effort
    - Identify: diagram types, title blocks, zones, sheet references, component density
    - Extract metadata: sheet numbers, revision dates, drawing numbers
    - Leverage Azure DI structured output for enhanced accuracy
@@ -1418,7 +1505,7 @@ Recommended Strategy:
 
 **Process (per chunk, parallel):**
 1. **Image Preparation**: Get page images for chunk
-2. **Multi-Layer Analysis** (o3-pro with vision):
+2. **Multi-Layer Analysis** (gpt-5-pro with vision):
    - **Layer 1**: Identify all symbols (electrical, mechanical, P&ID standards)
    - **Layer 2**: Trace connections (wires, pipes, ducts, signal lines)
    - **Layer 3**: Extract annotations (labels, specs, ratings, dimensions)
@@ -1531,9 +1618,9 @@ The system collects quality metrics across all chunks and displays a summary:
    📝 Staged document: smart_chunk_0 (page 1-2)
    📝 Staged document: smart_chunk_1 (page 3-4)
    📝 Staged document: smart_chunk_2 (page 5)
-   ✓ Enhanced context index built with o3-pro capabilities
+   ✓ Enhanced context index built with gpt-5-pro capabilities
 
-✅ o3-pro Enhanced Analysis Complete!
+✅ gpt-5-pro Enhanced Analysis Complete!
 💾 Committing 3 documents to Azure AI Search...
 ✅ Successfully uploaded 3 documents to Azure AI Search index: edison-pro-index
 ```
@@ -1627,7 +1714,7 @@ python edisonpro.py \
 
 3. **Answer Generation** (`ask_question_pro`):
    - **Input**: User question + retrieved context chunks
-   - **Model**: o3-pro with **LOW** reasoning effort (fast, 90s timeout)
+   - **Model**: gpt-5-pro with **LOW** reasoning effort (fast, 90s timeout)
    - **Prompt**: Engineering-focused instructions + context + question
    - **Responses API Call**: Synchronous call wrapped in async executor
    - **Parse Response**:
@@ -1652,8 +1739,8 @@ User: What is the voltage rating of transformer T-101?
 🔍 Processing question...
    Azure Search available: True
    Retrieved 3 relevant chunks
-   o3-pro reasoning: 245 tokens used
-   ✓ Got result from o3-pro
+   gpt-5-pro reasoning: 245 tokens used
+   ✓ Got result from gpt-5-pro
 
 Response:
 ────────────────────────────────────────
@@ -1685,9 +1772,9 @@ secondary voltage, with a capacity of 1000kVA.
 ### Key Technical Highlights
 
 #### 🔧 **Dual Client Architecture**
-- **OpenAI Client**: For o3-pro Responses API (no `api_version` parameter)
+- **OpenAI Client**: For gpt-5-pro Responses API (no `api_version` parameter)
 - **AsyncAzureOpenAI Client**: For embeddings (requires `api_version`)
-- **Rationale**: o3-pro uses OpenAI-compatible Responses API, not Azure-specific Chat Completions
+- **Rationale**: gpt-5-pro uses OpenAI-compatible Responses API, not Azure-specific Chat Completions
 
 #### ⚡ **Async/Sync Bridge**
 - Responses API is **synchronous** but EDISON PRO is **async**
@@ -1714,7 +1801,7 @@ secondary voltage, with a capacity of 1000kVA.
 ### Key Components
 
 **Planning Agent (Phase 0 - EDISON PRO)**
-- 🔍 Runs first with o3-pro low reasoning (15-30 seconds)
+- 🔍 Runs first with gpt-5-pro low reasoning (15-30 seconds)
 - Auto-detects: disciplines, drawing types, complexity, key features
 - Outputs: AnalysisPlan with recommended strategy
 - Optimizes: reasoning effort, concurrency, focus areas
@@ -1727,7 +1814,7 @@ secondary voltage, with a capacity of 1000kVA.
 
 ### Six Specialized Agents
 
-EDISON PRO uses a multi-agent architecture with enhanced o3-pro reasoning:
+EDISON PRO uses a multi-agent architecture with enhanced gpt-5-pro reasoning:
 
 1. **DocumentPreprocessor / DocumentPreprocessorPro** (Agent 1)
    - 🚀 **Parallel Processing**: Concurrent page analysis with controlled concurrency
@@ -1736,7 +1823,7 @@ EDISON PRO uses a multi-agent architecture with enhanced o3-pro reasoning:
    - 🔍 **Structure Analysis**: Identifies diagram types, title blocks, and zones
    - 🔗 **Context Preservation**: Maintains overlapping context across boundaries
    - 📊 **Metadata Extraction**: Extracts references, components, and dependencies
-   - **PRO Enhancement**: Deep structure analysis with confidence scoring and expert insights via o3-pro
+   - **PRO Enhancement**: Deep structure analysis with confidence scoring and expert insights via gpt-5-pro
 
 2. **PlanningAgentPro** (Agent 0 - EDISON PRO Only)
    - 🔍 **Auto-Discipline Detection**: Identifies electrical, mechanical, civil, P&ID, structural, or hybrid combinations
@@ -1748,7 +1835,7 @@ EDISON PRO uses a multi-agent architecture with enhanced o3-pro reasoning:
    - **Result**: Intelligent, self-guiding analysis with auto-optimization
 
 3. **VisualElementExtractor / VisualElementExtractorPro** (Agent 2)
-   - Uses GPT-4 Vision / o3-pro to analyze diagrams
+   - Uses GPT-4 Vision / gpt-5-pro to analyze diagrams
    - Identifies symbols, lines, annotations
    - Extracts spatial relationships
    - **PRO Enhancement**: Multi-layer visual analysis with engineering significance assessment and quality evaluation
@@ -1774,7 +1861,7 @@ EDISON PRO uses a multi-agent architecture with enhanced o3-pro reasoning:
 7. **QueryHandler** (Agent 6)
     - Answers specific questions with hybrid Azure AI Search retrieval (remote index fallback when local cache is empty)
     - Provides evidence-based responses with clickable references inside the UI
-    - Surfaces o3-pro reasoning chains and falls back to raw output when JSON parsing fails
+    - Surfaces gpt-5-pro reasoning chains and falls back to raw output when JSON parsing fails
     - **PRO Enhancement**: UI defaults to LOW reasoning effort for responsive conversations
 
 ### Supporting Components
@@ -1791,9 +1878,9 @@ EDISON PRO uses a multi-agent architecture with enhanced o3-pro reasoning:
 **Key Technical Decisions:**
 
 1. **Dual Client Architecture**
-   - OpenAI client for o3-pro Responses API (base_url + api_key, NO api_version)
+   - OpenAI client for gpt-5-pro Responses API (base_url + api_key, NO api_version)
    - AsyncAzureOpenAI client for embeddings API (requires api_version)
-   - Rationale: o3-pro uses OpenAI-compatible Responses API structure, not Azure-specific Chat Completions
+   - Rationale: gpt-5-pro uses OpenAI-compatible Responses API structure, not Azure-specific Chat Completions
 
 2. **Async/Sync Bridge Pattern**
    - Responses API call is synchronous but architecture is async
@@ -1801,7 +1888,7 @@ EDISON PRO uses a multi-agent architecture with enhanced o3-pro reasoning:
    - Timeout management with `asyncio.wait_for()` based on reasoning effort
 
 3. **Response Structure Handling**
-   - o3-pro returns `response.output[]` with `type='reasoning'` or `type='message'`
+   - gpt-5-pro returns `response.output[]` with `type='reasoning'` or `type='message'`
    - Content can be None requiring defensive checks
    - Reasoning tokens tracked separately for performance monitoring
 
@@ -1888,29 +1975,29 @@ EDISON PRO uses a multi-agent architecture with enhanced o3-pro reasoning:
 - Ensure `.env` is in the same directory as `edisonpro.py`
 - For EDISON PRO, use `AZURE_OPENAI_PRO_ENDPOINT` with `/openai/v1/` suffix
 
-### Error: "404 errors with Azure OpenAI o3-pro deployment"
+### Error: "404 errors with Azure OpenAI gpt-5-pro deployment"
 
 **Troubleshooting steps:**
 
 ```bash
-# Test your o3-pro configuration
+# Test your gpt-5-pro configuration
 python test_o3_pro.py
 
 # Verify endpoint format (must end with /openai/v1/)
 AZURE_OPENAI_PRO_ENDPOINT=https://your-resource.openai.azure.com/openai/v1/
 
 # Check deployment name
-AZURE_OPENAI_PRO_DEPLOYMENT_NAME=o3-pro
+AZURE_OPENAI_PRO_DEPLOYMENT_NAME=gpt-5-pro
 
-# Ensure you're NOT using api_version parameter (o3-pro uses Responses API)
+# Ensure you're NOT using api_version parameter (gpt-5-pro uses Responses API)
 # This is handled automatically - just don't add AZURE_OPENAI_PRO_API_VERSION
 ```
 
-**Common o3-pro issues:**
+**Common gpt-5-pro issues:**
 - Endpoint must include `/openai/v1/` suffix for Responses API
-- Do NOT use `api_version` parameter with o3-pro (uses OpenAI client, not AzureOpenAI)
+- Do NOT use `api_version` parameter with gpt-5-pro (uses OpenAI client, not AzureOpenAI)
 - Embeddings use separate AsyncAzureOpenAI client WITH `api_version`
-- Ensure deployment name matches your Azure resource (typically "o3-pro")
+- Ensure deployment name matches your Azure resource (typically "gpt-5-pro")
 
 ### Error: "CancelledError" or Timeout Issues
 
@@ -1929,7 +2016,7 @@ Each component uses different reasoning efforts optimized for its role:
 | **Document Preprocessor** | CLI setting | 90s-1800s | Controlled by `--reasoning-effort` flag (default: `high`) |
 | **Visual Element Extractor** | CLI setting | 90s-1800s | Controlled by `--reasoning-effort` flag (default: `high`) |
 | **Domain Expert Interpreter** | CLI setting | 90s-1800s | Controlled by `--reasoning-effort` flag (default: `high`) |
-| **Q&A Handler** | `low` (fixed in UI) | 90s (1.5 min) | Responsive o3-pro answers in the web UI with reasoning + raw fallback |
+| **Q&A Handler** | `low` (fixed in UI) | 90s (1.5 min) | Responsive gpt-5-pro answers in the web UI with reasoning + raw fallback |
 
 **Timeout Configuration:**
 - **low**: 90 seconds (1.5 minutes)
@@ -1950,12 +2037,12 @@ EDISON PRO uses three separate Azure OpenAI endpoints for different operations:
 
 | **Environment Variable** | **Used By** | **Purpose** | **API Type** | **Example Value** |
 |--------------------------|-------------|-------------|--------------|-------------------|
-| `AZURE_OPENAI_PRO_ENDPOINT` | o3-pro Reasoning | Planning Agent, Document Preprocessor, Visual Extraction, Domain Interpretation, Q&A with reasoning | Responses API | `https://resource.openai.azure.com/openai/v1/` |
+| `AZURE_OPENAI_PRO_ENDPOINT` | gpt-5-pro Reasoning | Planning Agent, Document Preprocessor, Visual Extraction, Domain Interpretation, Q&A with reasoning | Responses API | `https://resource.openai.azure.com/openai/v1/` |
 | `AZURE_OPENAI_EMBEDDING_ENDPOINT` | Embedding Generation | Context chunking, Azure Search indexing, vector similarity | Standard API | `https://resource.openai.azure.com/` |
 | `AZURE_OPENAI_ENDPOINT` | Fallback | Used if embedding endpoint not configured | Standard API | `https://resource.openai.azure.com/` |
 
 **Endpoint Priority:**
-1. **o3-pro operations**: Always use `AZURE_OPENAI_PRO_ENDPOINT` (must end with `/openai/v1/`)
+1. **gpt-5-pro operations**: Always use `AZURE_OPENAI_PRO_ENDPOINT` (must end with `/openai/v1/`)
 2. **Embedding operations**: Try `AZURE_OPENAI_EMBEDDING_ENDPOINT` first, fallback to `AZURE_OPENAI_ENDPOINT`
 3. **Standard operations**: Use `AZURE_OPENAI_ENDPOINT`
 
@@ -1964,10 +2051,10 @@ EDISON PRO uses three separate Azure OpenAI endpoints for different operations:
 - Embedding endpoint can be separate to isolate embedding workloads from reasoning operations
 - If embedding endpoint is not set, the system falls back to the standard endpoint
 - All endpoints should point to the same or compatible Azure OpenAI resources
-- Use separate deployments: `o3-pro` for reasoning, `text-embedding-ada-002` or newer for embeddings
+- Use separate deployments: `gpt-5-pro` for reasoning, `text-embedding-ada-002` or newer for embeddings
 
 **Why Separate Endpoints?**
-- **Performance isolation**: Heavy o3-pro reasoning doesn't impact embedding generation
+- **Performance isolation**: Heavy gpt-5-pro reasoning doesn't impact embedding generation
 - **Cost tracking**: Separate billing and usage monitoring by operation type
 - **Rate limiting**: Independent quota management for reasoning vs embeddings
 - **Flexibility**: Use different Azure regions or resources for different workloads
@@ -1995,9 +2082,9 @@ EDISON PRO creates comprehensive logs in the intermediate files directory:
 
 #### Visual Element Extraction Detail
 
-o3-pro visual analysis is configured for **exhaustive detail extraction**:
+gpt-5-pro visual analysis is configured for **exhaustive detail extraction**:
 
-**What o3-pro Extracts:**
+**What gpt-5-pro Extracts:**
 - **Every symbol**: Standard (ISO/ANSI/IEC) and custom symbols
 - **All components**: Equipment, instruments, terminals, junction boxes
 - **Complete text**: Labels, specifications, ratings, dimensions, callouts, notes
@@ -2010,8 +2097,8 @@ o3-pro visual analysis is configured for **exhaustive detail extraction**:
 - **Complex diagrams**: 50-150+ elements per page
 - **Multi-sheet drawings**: Proportional to complexity
 
-**Why o3-pro Excels at Visual Analysis:**
-- **Image input support**: ✅ o3-pro (2025-06-10) supports direct image processing via Responses API
+**Why gpt-5-pro Excels at Visual Analysis:**
+- **Image input support**: ✅ gpt-5-pro (2025-06-10) supports direct image processing via Responses API
 - **Advanced reasoning**: Deeper understanding of engineering symbols and conventions
 - **Context awareness**: Understands relationships between visual elements
 - **Standards knowledge**: Recognizes ISO, ANSI, IEC, NEMA standards
@@ -2019,10 +2106,10 @@ o3-pro visual analysis is configured for **exhaustive detail extraction**:
 
 **If visual elements seem low:**
 1. Check the `visual_elements_*_analysis.json` files in intermediate directory
-2. Review the `00_analysis_log.txt` for o3-pro response status
+2. Review the `00_analysis_log.txt` for gpt-5-pro response status
 3. Verify image quality and resolution (recommended: 300 DPI minimum)
 4. Consider increasing `--reasoning-effort` to `maximum` for complex diagrams
-5. Check that o3-pro has sufficient timeout (high=15min, maximum=30min)
+5. Check that gpt-5-pro has sufficient timeout (high=15min, maximum=30min)
 
 ### Protected PDF Issues
 
@@ -2056,7 +2143,7 @@ pip install chroma-hnswlib pydantic>=1.9.0 posthog>=2.4.0
 ### Error: "Unsupported value: 'temperature'"
 
 - This error has been eliminated in the latest version
-- EDISON PRO uses default model behavior for consistent results with o3-pro
+- EDISON PRO uses default model behavior for consistent results with gpt-5-pro
 
 ### Error: "Unsupported data type" (Embeddings)
 
@@ -2187,13 +2274,13 @@ This project uses Azure OpenAI services. Ensure you comply with:
 ---
 
 **Version**: 2.0  
-**EDISON PRO**: Optimized for Azure OpenAI o3-pro with Responses API  
+**EDISON PRO**: Optimized for Azure OpenAI gpt-5-pro with Responses API  
 **Author**: Advanced Engineering AI System
 
 ## 🆕 What's New in Version 2.0
 
 ### Core Features
-- ✨ **Azure OpenAI o3-pro Integration**: Enhanced reasoning capabilities via Responses API
+- ✨ **Azure OpenAI gpt-5-pro Integration**: Enhanced reasoning capabilities via Responses API
 - � **Intelligent Planning Agent**: Auto-detects disciplines, complexity, and key features before analysis
 - 🌐 **Hybrid Domain Support**: Multi-discipline analysis with domain presets (utility, mep, structural-civil, process, building)
 - 🎯 **Auto-Domain Detection**: System figures out domains automatically
@@ -2210,21 +2297,21 @@ This project uses Azure OpenAI services. Ensure you comply with:
 
 ### Web UI Features
 - 🧭 **Azure Search-Aware Initialization**: Commits pending documents and streams context from remote index
-- ⚡ **Responsive Reasoning**: Forces o3-pro to LOW reasoning effort for the UI with reasoning chains
+- ⚡ **Responsive Reasoning**: Forces gpt-5-pro to LOW reasoning effort for the UI with reasoning chains
 - 🧾 **Raw Output Fallback**: Displays raw model response when JSON parsing fails
 - 🧠 **Engineering Prompt Shortcuts**: Clickable sample questions for fast queries
 - 🎨 **Refined Interface**: Gradient engineering header, status panel, updated avatars
-- 🤖 **Hybrid Agent System (NEW)**: Intelligent routing between o3-pro and GPT-4.1 Code Agent for data transformation
+- 🤖 **Hybrid Agent System (NEW)**: Intelligent routing between gpt-5-pro and GPT-4.1 Code Agent for data transformation
 - 📊 **Data Transformation (NEW)**: Automatic table generation, calculations, CSV exports, and chart creation
 - 💡 **Smart Detection (NEW)**: Keywords and pattern matching route questions to appropriate agent
-- 💰 **Cost Optimization (NEW)**: 90% savings by routing understanding questions to o3-pro vs. code agent
+- 💰 **Cost Optimization (NEW)**: 90% savings by routing understanding questions to gpt-5-pro vs. code agent
 
 ### Code Agent Integration (Phase 1 & 2 - October 2025)
-- 🤖 **Hybrid Agent Architecture**: Intelligent routing between o3-pro (understanding) and GPT-4.1 Code Agent (data transformation)
+- 🤖 **Hybrid Agent Architecture**: Intelligent routing between gpt-5-pro (understanding) and GPT-4.1 Code Agent (data transformation)
 - 🎯 **Smart Detection**: 45 keywords + 8 regex patterns automatically detect data transformation questions
 - 📊 **Multi-Format Output**: HTML tables, CSV/Excel exports, matplotlib charts with download buttons
-- 💡 **Context-Aware**: Passes structured interpretations from o3-pro to code agent for accurate transformations
-- 💰 **Cost-Efficient**: Automatic routing saves 90% by using o3-pro for understanding ($0.001 vs $0.01-0.02)
+- 💡 **Context-Aware**: Passes structured interpretations from gpt-5-pro to code agent for accurate transformations
+- 💰 **Cost-Efficient**: Automatic routing saves 90% by using gpt-5-pro for understanding ($0.001 vs $0.01-0.02)
 - 🔄 **Graceful Fallback**: System works without code agent, features optional with Azure AI Projects
 - 📚 **Complete Documentation**: CODE_AGENT_QUICKSTART.md, CODE_AGENT_INTEGRATION.md, PHASE_1_2_COMPLETE.md
 
@@ -2240,7 +2327,7 @@ This project uses Azure OpenAI services. Ensure you comply with:
 - "Show all transformers as a table" → Code Agent generates HTML table
 - "Calculate total power load" → Code Agent executes Python calculation
 - "Export components to CSV" → Code Agent creates downloadable file
-- "Why is this rated at 100A?" → o3-pro provides engineering reasoning
+- "Why is this rated at 100A?" → gpt-5-pro provides engineering reasoning
 
 ### Interactive Plotly Charts (Phase 3 - October 2025)
 - 📈 **Interactive Visualizations**: Plotly-powered charts with zoom, pan, hover tooltips
@@ -2315,13 +2402,13 @@ BING_CONNECTION_ID=your-bing-connection-id  # From Azure AI Studio
 - ✅ Looking for typical values (voltage ratings, safety factors, etc.)
 - ✅ Need regulatory or code compliance information
 - ❌ Simple data extraction (tables, calculations) - no need for web search
-- ❌ Understanding existing diagram content - use o3-pro without web search
+- ❌ Understanding existing diagram content - use gpt-5-pro without web search
 
 **Cost:** Same as Code Agent (~$0.01-0.02 per query) + negligible Bing Search API cost
 
 ### Validation
 - ✅ **Production Tested**: Successfully analyzed engineering diagrams with 88% confidence
-- ✅ **o3-pro Validated**: test_o3_pro.py confirms proper Responses API integration
+- ✅ **gpt-5-pro Validated**: test_o3_pro.py confirms proper Responses API integration
 - ✅ **Planning Agent Validated**: Auto-detects civil+electrical utility drawings with 92%+ confidence
 - ✅ **Comprehensive Documentation**: Technical guides for planning agent, hybrid domains, Azure Search
 
@@ -2337,7 +2424,7 @@ BING_CONNECTION_ID=your-bing-connection-id  # From Azure AI Studio
 - 🎯 **Guided Workflows**: Step-by-step question sequences with purpose explanations
 - ✅ **Quality Checklists**: Built-in verification lists ensure nothing is missed
 - 📊 **Professional Outputs**: Auto-generate tables, charts, exports, and reports
-- ⚡ **Smart Routing**: Questions automatically use o3-pro or Code Agent as appropriate
+- ⚡ **Smart Routing**: Questions automatically use gpt-5-pro or Code Agent as appropriate
 - 🔄 **Repeatable**: Standardized methodology across similar projects
 - 📖 **Documentation**: See `md/ANALYSIS_TEMPLATES.md` for complete guide
 

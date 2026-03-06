@@ -98,7 +98,7 @@ except ImportError:
     HAS_PIL_NUMPY = False
 
 try:
-    from openai import OpenAI  # Note: Using regular OpenAI client for Responses API
+    from openai import OpenAI, AzureOpenAI  # AzureOpenAI used for Responses API on Azure
     HAS_OPENAI = True
 except ImportError:
     print("❌ Error: OpenAI is required. Install with: pip install openai")
@@ -172,6 +172,23 @@ if not (HAS_PYMUPDF and HAS_PIL_NUMPY and HAS_OPENAI):
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
+
+# ============================================================================
+# ADVANCED PROMPTING CONSTRAINTS
+# Engineering-domain negative prompting injected into every LLM call to
+# reduce hallucination of absent standards, components, and ratings.
+# ============================================================================
+ENGINEERING_CONSTRAINTS = """
+CONSTRAINTS — STRICTLY FOLLOW:
+- DO NOT cite NEC / ASME / ISO / NFPA / OSHA section numbers you cannot directly trace to the provided context
+- DO NOT assume component ratings (voltage, current, pressure, temperature) that are not explicitly stated in the diagram chunks
+- DO NOT confuse IEC and NEMA equipment naming conventions when both are plausible
+- DO NOT generalise findings from one diagram section to the entire system without explicit cross-reference evidence
+- DO NOT state "appears to comply" without identifying the specific standard clause and its version year
+- DO NOT assign confidence > 0.85 when fewer than 3 independent evidence chunks support the claim
+- IF UNSURE: state explicitly "insufficient diagram data to determine [X]" rather than speculating
+"""
+
 
 async def safe_responses_api_call(client, **params):
     """Enhanced Azure OpenAI Responses API call with detailed error diagnostics and usage tracking"""
@@ -860,7 +877,7 @@ class PlanningAgentPro:
     def __init__(self, client: OpenAI, deployment_name: str):
         self.client = client
         self.deployment_name = deployment_name
-        self.planning_reasoning_effort = "low"  # Fast planning phase
+        self.planning_reasoning_effort = "high"  # gpt-5-pro only supports 'high'
         self.history: List[Dict[str, Any]] = self._load_history()
         self._history_cache: Optional[str] = None
 
@@ -958,12 +975,12 @@ class PlanningAgentPro:
         complexity = plan.complexity
 
         if complexity == "simple" and current_effort in {"high", "maximum"}:
-            plan.agent_config["reasoning_effort"] = "medium"
-            plan.recommended_reasoning = "medium"
-            note = "Cost optimization: lowered reasoning for simple workload"
+            plan.agent_config["reasoning_effort"] = "high"
+            plan.recommended_reasoning = "high"
+            note = "gpt-5-pro only supports high reasoning effort"
             if note not in plan.special_considerations:
                 plan.special_considerations.append(note)
-            adjustments.append("reasoning_effort -> medium")
+            adjustments.append("reasoning_effort -> high")
 
         if sample_count <= 1 and plan.agent_config.get("max_concurrent_pages", 5) > 4:
             plan.agent_config["max_concurrent_pages"] = 4
@@ -991,15 +1008,15 @@ class PlanningAgentPro:
             note = "Source protected - rely on visual reasoning"
             if note not in considerations:
                 considerations.append(note)
-            agent_config["reasoning_effort"] = "maximum"
-            plan.recommended_reasoning = "maximum"
+            agent_config["reasoning_effort"] = "high"
+            plan.recommended_reasoning = "high"
             updates.append("escalated reasoning for protected source")
 
         if diagnostics.get("is_scanned") or (quality in {"poor_scanned", "poor_low_density"}):
             note = "Scanned quality - prioritize OCR improvements"
             if note not in considerations:
                 considerations.append(note)
-            if agent_config.get("reasoning_effort") != "maximum":
+            if agent_config.get("reasoning_effort") != "high":
                 agent_config["reasoning_effort"] = "high"
                 plan.recommended_reasoning = "high"
                 updates.append("raised reasoning for scanned input")
@@ -2063,7 +2080,8 @@ OUTPUT: Enhanced JSON object with reasoning traces:
             self.client,
             model=self.deployment_name,
             input=input_data,
-            reasoning={"effort": self.reasoning_effort}
+            reasoning={"effort": "high"},
+            max_output_tokens=32000
         )
         
         # Extract text from response output (handle o3-pro response structure)
@@ -2590,7 +2608,8 @@ OUTPUT: Enhanced JSON array with reasoning:
             self.client,
             model=self.deployment_name,
             input=input_data,
-            reasoning={"effort": self.reasoning_effort}
+            reasoning={"effort": "high"},
+            max_output_tokens=32000
         )
         
         # Extract text from response (handle o3-pro response structure)
@@ -2721,19 +2740,15 @@ class DiagramAnalysisOrchestratorPro:
         if not azure_api_key:
             raise ValueError("AZURE_OPENAI_API_KEY must be set for EDISON Pro")
         
-        # Initialize OpenAI client for Responses API
-        # Note: The endpoint should already include the full path if needed
-        # If AZURE_OPENAI_PRO_ENDPOINT doesn't include /openai/v1/, add it
-        if not azure_pro_endpoint.endswith(('/openai/v1/', '/openai/v1')):
-            base_url = f"{azure_pro_endpoint.rstrip('/')}/openai/v1/"
-        else:
-            base_url = azure_pro_endpoint
+        # Initialize AzureOpenAI client — sends api-key header (not Bearer token)
+        api_version = os.getenv("AZURE_OPENAI_PRO_API_VERSION") or os.getenv("AZURE_OPENAI_API_VERSION", "2025-03-01-preview")
         
-        print(f"   Base URL: {base_url}")
+        print(f"   API Version: {api_version}")
         
-        self.client = OpenAI(
+        self.client = AzureOpenAI(
             api_key=azure_api_key,
-            base_url=base_url
+            azure_endpoint=azure_pro_endpoint.rstrip('/'),
+            api_version=api_version
         )
 
         self.deployment_name = deployment_name
@@ -2765,6 +2780,8 @@ class DiagramAnalysisOrchestratorPro:
         self.analysis_plan = None  # Will be set by planning phase
         self.sheet_correlations = {}
         self.quality_summary = {}
+        # Q&A history for few-shot injection (most recent exchanges first)
+        self.qa_history: list = []  # List of (question, answer) tuples
     
     def _start_logging(self):
         """Start logging all output to file in intermediate directory"""
@@ -2827,7 +2844,8 @@ class DiagramAnalysisOrchestratorPro:
                         self.client,
                         model=self.deployment_name,
                         input=test_input,
-                        reasoning={"effort": "low"}
+                        reasoning={"effort": "high"},
+                        max_output_tokens=100
                     )
                     
                     print("   ✅ Configuration test successful!")
@@ -3634,9 +3652,17 @@ class DiagramAnalysisOrchestratorPro:
             f"Chunk {c['metadata'].chunk_id} (Pages {c['metadata'].page_numbers}):\n{c['content'][:1500]}"
             for c in relevant_chunks
         ])
+
+        # ── Few-shot block: inject up to 3 most recent Q&A exchanges ──
+        few_shot_block = ""
+        if self.qa_history:
+            few_shot_block = "\nEXAMPLES FROM PRIOR EXCHANGES IN THIS SESSION:\n"
+            for past_q, past_a in self.qa_history[-3:]:
+                few_shot_block += f"Q: {past_q}\nA (summary): {past_a[:400]}\n---\n"
+            few_shot_block += "\nNOW ANSWER THE NEW QUESTION BELOW with the same analytical rigour.\n"
         
         prompt = f"""You are an expert engineering consultant with advanced reasoning capabilities, enhanced for o3-pro analysis.
-
+{few_shot_block}
 QUESTION: {question}
 
 ENHANCED EXPERT RESPONSE FRAMEWORK with o3-pro REASONING:
@@ -3670,7 +3696,7 @@ ENHANCED EXPERT RESPONSE FRAMEWORK with o3-pro REASONING:
 
 RELEVANT CONTEXT FROM ANALYZED DIAGRAMS:
 {context_text[:12000]}
-
+{ENGINEERING_CONSTRAINTS}
 OUTPUT: Enhanced JSON response with o3-pro reasoning:
 {{
     "answer": "comprehensive expert answer",
@@ -3717,7 +3743,8 @@ OUTPUT: Enhanced JSON response with o3-pro reasoning:
             self.client,
             model=self.deployment_name,
             input=input_data,
-            reasoning={"effort": "low"}  # Set to low for UI Q&A
+            reasoning={"effort": "high"},
+            max_output_tokens=16000
         )
         
         # Extract and parse response (handle o3-pro response structure)
@@ -3770,12 +3797,21 @@ OUTPUT: Enhanced JSON response with o3-pro reasoning:
                 json_text = output_text.strip()
 
             result = json.loads(json_text)
+            # Persist this exchange for future few-shot context (cap at 10 pairs)
+            answer_summary = result.get("answer", output_text)
+            self.qa_history.append((question, answer_summary))
+            if len(self.qa_history) > 10:
+                self.qa_history.pop(0)
             print(f"✓ Successfully parsed JSON response: {result}")
             return result
         except Exception as e:
             print(f"⚠️  JSON parsing failed: {e}")
             print(f"   Output text: {output_text[:500]}")
             print(f"   Returning fallback result dict with raw_output.")
+            # Still store raw output for few-shot continuity
+            self.qa_history.append((question, output_text[:400]))
+            if len(self.qa_history) > 10:
+                self.qa_history.pop(0)
             return {
                 "answer": output_text if output_text else "No response generated from o3-pro",
                 "reasoning_chain": ["Analysis completed with o3-pro reasoning"],
@@ -3783,7 +3819,60 @@ OUTPUT: Enhanced JSON response with o3-pro reasoning:
                 "raw_output": output_text,
                 "error": f"Response format parsing failed: {str(e)}"
             }
-    
+
+    async def ask_with_self_critique(self, question: str, domain: str = "general") -> Dict[str, Any]:
+        """
+        Two-pass self-critique loop.
+        Pass 1: generate initial answer via ask_question_pro.
+        Pass 2: the model critiques its own output against engineering QA checklist.
+        Returns the revised answer when issues are found, otherwise the original.
+        """
+        initial = await self.ask_question_pro(question)
+
+        # Only run critique when we have a substantive answer
+        initial_answer = initial.get("answer", "")
+        if not initial_answer or initial.get("error"):
+            return initial
+
+        critique_prompt = f"""You are a senior QA engineer reviewing an AI-generated engineering analysis.
+
+ORIGINAL QUESTION:
+{question}
+
+ANALYSIS TO REVIEW:
+{initial_answer[:3000]}
+
+REVIEW CHECKLIST — identify any of the following issues:
+1. Factual errors or claims not supported by diagram evidence
+2. Missing or incorrect code/standard references (NEC, ASME, OSHA, NFPA, IBC)
+3. Safety considerations overlooked
+4. Overconfident claims where evidence is thin (< 3 chunks)
+5. Ambiguous component designators interpreted without hedging
+6. IEC/NEMA naming convention confusion
+
+{ENGINEERING_CONSTRAINTS}
+
+OUTPUT JSON:
+{{
+    "issues_found": ["issue1", "issue2"],
+    "is_acceptable": true,
+    "revised_answer": "corrected answer (copy original if no changes needed)"
+}}"""
+
+        try:
+            critique = await self.ask_question_pro(critique_prompt)
+            if not critique.get("is_acceptable", True) and critique.get("revised_answer"):
+                print("🔍 Self-critique: issues found — using revised answer")
+                return {**initial,
+                        "answer": critique["revised_answer"],
+                        "self_critique_issues": critique.get("issues_found", [])}
+            else:
+                print("✅ Self-critique: answer accepted as-is")
+        except Exception as e:
+            print(f"⚠️  Self-critique pass failed (returning original): {e}")
+
+        return initial
+
     def print_interpretations_summary_pro(self):
         """Enhanced interpretations summary for o3-pro"""
         print("\n🧠 o3-pro ENHANCED ANALYSIS SUMMARY")
@@ -3889,8 +3978,8 @@ async def cli_main_pro():
     parser.add_argument("--no-auto-plan", action="store_false", dest="auto_plan",
                        help="Disable automatic planning phase and use manual domain")
     parser.add_argument("--interactive", action="store_true", help="Enhanced interactive Q&A mode")
-    parser.add_argument("--reasoning-effort", choices=["low", "medium", "high", "maximum"], 
-                       default="high", help="o3-pro reasoning effort level")
+    parser.add_argument("--reasoning-effort", choices=["high"], 
+                       default="high", help="gpt-5-pro reasoning effort level (only 'high' supported)")
     
     args = parser.parse_args()
     

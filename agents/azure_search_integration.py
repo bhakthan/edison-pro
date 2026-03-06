@@ -99,24 +99,50 @@ class PatternStorage:
         pattern_type: Optional[str] = None,
         top: int = 10
     ) -> List[Dict[str, Any]]:
-        """Search patterns with filters"""
+        """Search patterns with filters, using Azure semantic reranker when available."""
         filters = []
         if domain:
             filters.append(f"domain eq '{domain}'")
         if pattern_type:
             filters.append(f"pattern_type eq '{pattern_type}'")
-        
+
         filter_str = " and ".join(filters) if filters else None
-        
-        results = self.search_client.search(
-            search_text=query,
-            filter=filter_str,
-            top=top,
-            include_total_count=True
-        )
-        
-        patterns = [dict(r) for r in results]
-        logger.info(f"🔍 Found {len(patterns)} patterns")
+
+        # Attempt semantic reranking (requires a semantic configuration on the index).
+        # Falls back to plain keyword search if the feature is unavailable.
+        try:
+            from azure.search.documents.models import QueryType
+            results = self.search_client.search(
+                search_text=query,
+                filter=filter_str,
+                query_type=QueryType.SEMANTIC,
+                semantic_configuration_name="default",
+                query_caption="extractive",
+                query_answer="extractive",
+                top=top,
+                include_total_count=True,
+            )
+            patterns = []
+            for r in results:
+                doc = dict(r)
+                # Prefer the semantic reranker score for ordering; fall back to search score
+                doc["_reranker_score"] = r.get("@search.reranker_score", r.get("@search.score", 0.0))
+                patterns.append(doc)
+            # Sort by reranker score descending so callers get the best results first
+            patterns.sort(key=lambda p: p.get("_reranker_score", 0.0), reverse=True)
+            logger.info(f"🔍 Found {len(patterns)} patterns (semantic reranked)")
+        except Exception as rerank_err:
+            # Semantic configuration may not exist on this index — fall back gracefully
+            logger.debug(f"Semantic reranking unavailable ({rerank_err}), using keyword search")
+            results = self.search_client.search(
+                search_text=query,
+                filter=filter_str,
+                top=top,
+                include_total_count=True,
+            )
+            patterns = [dict(r) for r in results]
+            logger.info(f"🔍 Found {len(patterns)} patterns (keyword search)")
+
         return patterns
 
 

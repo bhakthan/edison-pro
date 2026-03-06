@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Play, Clock, Search, FileCheck, Loader2, FileText } from 'lucide-react';
+import { ChevronDown, ChevronUp, Play, Clock, Search, FileCheck, Loader2, FileText, X, CheckSquare, Square, AlertCircle } from 'lucide-react';
 import { api } from '../api/client';
 import type { AnalysisTemplate, TemplateExecutionRequest, TemplateExecutionResponse } from '../types';
 
@@ -16,6 +16,8 @@ export function TemplateSelector({ onTemplateExecute, useWebSearch }: TemplateSe
   const [selectedTemplate, setSelectedTemplate] = useState<AnalysisTemplate | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [confirmTemplate, setConfirmTemplate] = useState<AnalysisTemplate | null>(null);
+  const [skippedQuestions, setSkippedQuestions] = useState<Set<number>>(new Set());
 
   const categories = [
     { value: 'all', label: 'All Templates' },
@@ -61,9 +63,27 @@ export function TemplateSelector({ onTemplateExecute, useWebSearch }: TemplateSe
     }
   };
 
+  const openConfirmModal = (template: AnalysisTemplate) => {
+    setConfirmTemplate(template);
+    setSkippedQuestions(new Set());
+  };
+
+  const closeConfirmModal = () => {
+    setConfirmTemplate(null);
+    setSkippedQuestions(new Set());
+  };
+
+  const toggleSkipQuestion = (index: number) => {
+    setSkippedQuestions(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index); else next.add(index);
+      return next;
+    });
+  };
+
   const handleExecuteTemplate = async (template: AnalysisTemplate) => {
     if (isExecuting) return;
-
+    closeConfirmModal();
     try {
       setIsExecuting(true);
       setSelectedTemplate(template);
@@ -71,7 +91,7 @@ export function TemplateSelector({ onTemplateExecute, useWebSearch }: TemplateSe
       const request: TemplateExecutionRequest = {
         template_id: template.template_id,
         use_web_search: useWebSearch,
-        skip_questions: []
+        skip_questions: Array.from(skippedQuestions)
       };
 
       const response = await api.executeTemplate(request);
@@ -85,8 +105,125 @@ export function TemplateSelector({ onTemplateExecute, useWebSearch }: TemplateSe
     }
   };
 
+  const activeCount = confirmTemplate ? confirmTemplate.questions.length - skippedQuestions.size : 0;
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-lg mb-6 overflow-visible">
+
+      {/* Confirmation Modal */}
+      {confirmTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeConfirmModal} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+
+            {/* Modal Header */}
+            <div className="flex items-start justify-between p-6 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Play className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h2 id="modal-title" className="text-xl font-bold text-gray-900">{confirmTemplate.name}</h2>
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">{confirmTemplate.category}</span>
+                </div>
+              </div>
+              <button onClick={closeConfirmModal} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Close">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Description */}
+              <p className="text-gray-600 leading-relaxed">{confirmTemplate.description}</p>
+
+              {/* Stats row */}
+              <div className="flex gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  <span><strong>{confirmTemplate.estimated_time_minutes} min</strong> estimated</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <FileText className="w-4 h-4 text-green-600" />
+                  <span><strong>{activeCount}</strong> of {confirmTemplate.questions.length} questions will run</span>
+                </div>
+                {useWebSearch && (
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <Search className="w-4 h-4 text-purple-600" />
+                    <span>Web search enabled</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Info banner */}
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
+                <span>Uncheck any questions you want to skip. All questions are selected by default.</span>
+              </div>
+
+              {/* Questions checklist */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Analysis Questions</h3>
+                {confirmTemplate.questions.map((question, idx) => {
+                  const isSkipped = skippedQuestions.has(idx);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => toggleSkipQuestion(idx)}
+                      className={`w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-all duration-150 ${
+                        isSkipped
+                          ? 'bg-gray-50 border-gray-200 opacity-50'
+                          : 'bg-blue-50 border-blue-200 hover:border-blue-400'
+                      }`}
+                    >
+                      <div className="flex-shrink-0 mt-0.5">
+                        {isSkipped
+                          ? <Square className="w-5 h-5 text-gray-400" />
+                          : <CheckSquare className="w-5 h-5 text-blue-600" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`flex items-center gap-2 mb-1`}>
+                          <span className="flex-shrink-0 w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                          {question.requires_code_agent && (
+                            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">Code Agent</span>
+                          )}
+                          <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${
+                            question.expected_format === 'table' ? 'bg-green-100 text-green-700' :
+                            question.expected_format === 'number' ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>{question.expected_format}</span>
+                        </div>
+                        <p className={`text-sm font-medium ${isSkipped ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{question.question}</p>
+                        {!isSkipped && <p className="text-xs text-blue-600 mt-0.5">{question.purpose}</p>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between gap-3 p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={closeConfirmModal}
+                className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleExecuteTemplate(confirmTemplate)}
+                disabled={activeCount === 0}
+                className="px-6 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
+              >
+                <Play className="w-4 h-4" />
+                Run {activeCount} Question{activeCount !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header - Clickable Button */}
       <button
         type="button"
@@ -243,7 +380,7 @@ export function TemplateSelector({ onTemplateExecute, useWebSearch }: TemplateSe
                     {/* Execute Button */}
                     <div className="ml-6">
                       <button
-                        onClick={() => handleExecuteTemplate(template)}
+                        onClick={() => openConfirmModal(template)}
                         disabled={isExecuting}
                         className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
                       >
