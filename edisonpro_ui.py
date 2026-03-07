@@ -650,10 +650,22 @@ class EdisonProUI:
             # Reinitialize to pick up new documents
             self.initialized = False
             self.initialize()
+
+            routing_summary = ""
+            if isinstance(result, dict) and result.get("pdf_classification"):
+                reasons = result.get("pdf_routing_reasons", [])
+                reason_line = f"\n📝 Router note: {reasons[0]}" if reasons else ""
+                routing_summary = (
+                    f"\n📄 PDF class: {result.get('pdf_classification', 'unknown')}"
+                    f"\n🧭 Route: {result.get('pdf_routing_primary', 'pymupdf')}"
+                    f" (fallback: {result.get('pdf_routing_fallback', 'none')})"
+                    f"\n🔍 Extraction quality: {result.get('extraction_quality', 'unknown')}"
+                    f"{reason_line}"
+                )
             
             return f"✅ Analysis complete!\n" \
                    f"📊 Processed {len(local_files)} file(s)\n" \
-                   f"💾 Results saved locally{output_info}\n\n" \
+                   f"💾 Results saved locally{output_info}{routing_summary}\n\n" \
                    f"🔄 System reinitialized - you can now ask questions!"
             
         except Exception as e:

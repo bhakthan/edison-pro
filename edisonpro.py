@@ -152,6 +152,11 @@ except ImportError:
     HAS_MARKITDOWN = False
     MarkItDown = None
 
+try:
+    from agents.pdf_router import PdfProcessingRouter
+except ImportError:
+    PdfProcessingRouter = None
+
 # Blob storage imports (optional)
 try:
     from blob_storage import BlobStorageManager, create_blob_manager_from_env
@@ -1749,9 +1754,44 @@ GENERAL ENGINEERING DOMAIN EXPERTISE:
             final_chunks = self._create_overlapping_chunks(processed_pages)
         
         return final_chunks
+
+    async def process_pdf(self, pdf_path: str) -> List[Dict[str, Any]]:
         """Process PDF with enhanced capabilities for o3-pro."""
         doc = fitz.open(pdf_path)
         total_pages = len(doc)
+
+        routing_plan = {
+            "document_type": "unknown",
+            "recommended_primary": "pymupdf",
+            "recommended_fallback": "markitdown" if HAS_MARKITDOWN else "none",
+            "prefer_markitdown": False,
+            "prioritize_visual_analysis": False,
+            "is_protected": False,
+            "reasons": ["Default routing"],
+            "metrics": {"pdf_path": pdf_path, "total_pages": total_pages},
+        }
+
+        if PdfProcessingRouter is not None:
+            try:
+                router = PdfProcessingRouter(
+                    has_markitdown=HAS_MARKITDOWN,
+                    has_azure_di=self.di_client is not None,
+                )
+                routing_plan = router.plan(pdf_path).to_dict()
+            except Exception as e:
+                print(f"⚠️  PDF router failed, falling back to default extraction path: {e}")
+
+        print(f"🧭 PDF routing: {routing_plan.get('document_type', 'unknown')} -> {routing_plan.get('recommended_primary', 'pymupdf')}")
+        for reason in routing_plan.get("reasons", [])[:3]:
+            print(f"   • {reason}")
+
+        if self.intermediate_dir:
+            save_intermediate_json(
+                routing_plan,
+                "00_pdf_routing_plan.json",
+                self.intermediate_dir,
+                "PDF routing plan and classification",
+            )
         
         print(f"📄 Processing {total_pages} pages with o3-pro enhanced analysis (max concurrent: {self.max_concurrent_pages})")
         
@@ -1791,13 +1831,16 @@ GENERAL ENGINEERING DOMAIN EXPERTISE:
             extraction_method = "pymupdf"
             
             # Use MarkItDown if PyMuPDF extraction is poor and MarkItDown is available
-            if (len(pymupdf_text.strip()) < 50 and markitdown_text and 
-                len(markitdown_text) > len(pymupdf_text) * 2):
+            prefer_markitdown = routing_plan.get("prefer_markitdown", False)
+            if markitdown_text and (
+                prefer_markitdown
+                or (len(pymupdf_text.strip()) < 50 and len(markitdown_text) > len(pymupdf_text) * 2)
+            ):
                 # Estimate this page's portion of MarkItDown text
                 start_pos = int((page_num / total_pages) * len(markitdown_text))
                 end_pos = int(((page_num + 1) / total_pages) * len(markitdown_text))
                 text = markitdown_text[start_pos:end_pos]
-                extraction_method = "markitdown"
+                extraction_method = "markitdown_router" if prefer_markitdown else "markitdown"
                 print(f"📄 Page {page_num + 1}: Using MarkItDown extraction ({len(text)} chars, {len(images)} images)")
             else:
                 print(f"📄 Page {page_num + 1}: Using PyMuPDF extraction ({len(text)} chars, {len(images)} images)")
@@ -1881,6 +1924,8 @@ GENERAL ENGINEERING DOMAIN EXPERTISE:
         # Enhanced extraction diagnostics
         all_text = "\n".join([page['text'] for page in page_data])
         diagnosis = diagnose_pdf_extraction(pdf_path, all_text, total_pages)
+        diagnosis["routing_plan"] = routing_plan
+        diagnosis["pdf_classification"] = routing_plan.get("document_type", "unknown")
         log_extraction_diagnosis_pro(diagnosis)
         self.latest_diagnostics = diagnosis
         
@@ -3562,6 +3607,9 @@ class DiagramAnalysisOrchestratorPro:
         
         # Commit all staged documents to Azure Search after successful analysis
         self.context_manager.commit_to_search()
+
+        diagnostics = getattr(self.preprocessor, "latest_diagnostics", {}) or {}
+        routing_plan = diagnostics.get("routing_plan", {})
         
         return {
             "status": "success",
@@ -3569,7 +3617,15 @@ class DiagramAnalysisOrchestratorPro:
             "visual_elements": total_elements,
             "analysis_type": "o3-pro enhanced",
             "model_used": self.deployment_name,
-            "intermediate_dir": str(self.intermediate_dir) if self.intermediate_dir else None
+            "intermediate_dir": str(self.intermediate_dir) if self.intermediate_dir else None,
+            "pdf_classification": diagnostics.get("pdf_classification", "unknown"),
+            "pdf_routing_primary": routing_plan.get("recommended_primary", "pymupdf"),
+            "pdf_routing_fallback": routing_plan.get("recommended_fallback", "none"),
+            "pdf_routing_reasons": routing_plan.get("reasons", [])[:5],
+            "pdf_routing_plan": routing_plan,
+            "extraction_quality": diagnostics.get("extraction_quality", "unknown"),
+            "is_scanned": diagnostics.get("is_scanned", False),
+            "is_protected": diagnostics.get("is_protected", False)
         }
     
     async def _generate_embedding_pro(self, text: str) -> List[float]:
