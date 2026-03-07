@@ -23,35 +23,81 @@ from .pathway_generator import PathwayGeneratorAgent
 from .flickering_system import FlickeringSystem
 from .confidence_evaluator import ConfidenceEvaluator, ConfidenceMetrics, ConfidenceChain
 
-# Innovative Feature Agents (Phase 1 & Phase 2)
-from .anomaly_predictor import AnomalyPredictorAgent, create_anomaly_predictor
-from .revision_analyzer import RevisionAnalyzerAgent, create_revision_analyzer
-from .query_suggester import QuerySuggestionAgent, create_query_suggestion_agent
-from .expert_network import ExpertNetworkAgent, create_expert_network
-from .counterfactual_simulator import CounterfactualSimulator, create_counterfactual_simulator
+try:
+    from .anomaly_predictor import AnomalyPredictorAgent, create_anomaly_predictor
+except Exception:
+    AnomalyPredictorAgent = None
+    create_anomaly_predictor = None
 
-# Phase 3 Enhancement Modules
-from .feedback_tracker import (
-    FeedbackTracker,
-    FeedbackEvent,
-    FeatureUsageStats,
-    create_feedback_tracker
-)
-from .results_visualizer import (
-    ResultsVisualizer,
-    ReportGenerator,
-    create_visualizer,
-    create_report_generator
-)
-from .cache_manager import (
-    CacheManager,
-    get_cache_manager,
-    create_cache_manager
-)
-from .azure_search_integration import (
-    PatternStorage,
-    create_pattern_storage
-)
+try:
+    from .revision_analyzer import RevisionAnalyzerAgent, create_revision_analyzer
+except Exception:
+    RevisionAnalyzerAgent = None
+    create_revision_analyzer = None
+
+try:
+    from .query_suggester import QuerySuggestionAgent, create_query_suggestion_agent
+except Exception:
+    QuerySuggestionAgent = None
+    create_query_suggestion_agent = None
+
+try:
+    from .expert_network import ExpertNetworkAgent, create_expert_network
+except Exception:
+    ExpertNetworkAgent = None
+    create_expert_network = None
+
+try:
+    from .counterfactual_simulator import CounterfactualSimulator, create_counterfactual_simulator
+except Exception:
+    CounterfactualSimulator = None
+    create_counterfactual_simulator = None
+
+try:
+    from .feedback_tracker import (
+        FeedbackTracker,
+        FeedbackEvent,
+        FeatureUsageStats,
+        create_feedback_tracker
+    )
+except Exception:
+    FeedbackTracker = None
+    FeedbackEvent = None
+    FeatureUsageStats = None
+    create_feedback_tracker = None
+
+try:
+    from .results_visualizer import (
+        ResultsVisualizer,
+        ReportGenerator,
+        create_visualizer,
+        create_report_generator
+    )
+except Exception:
+    ResultsVisualizer = None
+    ReportGenerator = None
+    create_visualizer = None
+    create_report_generator = None
+
+try:
+    from .cache_manager import (
+        CacheManager,
+        get_cache_manager,
+        create_cache_manager
+    )
+except Exception:
+    CacheManager = None
+    get_cache_manager = None
+    create_cache_manager = None
+
+try:
+    from .azure_search_integration import (
+        PatternStorage,
+        create_pattern_storage
+    )
+except Exception:
+    PatternStorage = None
+    create_pattern_storage = None
 
 __all__ = [
     # Core Flickering System

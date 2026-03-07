@@ -1,5 +1,16 @@
 import axios from 'axios';
-import type { ChatResponse, AnalysisStatus, SystemStatus, AnalysisTemplate, TemplateExecutionRequest, TemplateExecutionResponse } from '../types';
+import type {
+  ChatResponse,
+  AnalysisStatus,
+  SystemStatus,
+  AnalysisTemplate,
+  TemplateExecutionRequest,
+  TemplateExecutionResponse,
+  DynamicAgentsStatus,
+  DynamicAgentSpec,
+  EnsureDynamicAgentResponse,
+  RunDynamicAgentResponse,
+} from '../types';
 
 // Configure base URL for your Python backend
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:7861';
@@ -114,6 +125,57 @@ export const api = {
 
   async getFlickeringStatus(): Promise<any> {
     const response = await apiClient.get('/flickering/status');
+    return response.data;
+  },
+
+  async getDynamicAgentsStatus(): Promise<DynamicAgentsStatus> {
+    const response = await apiClient.get('/dynamic-agents/status');
+    return response.data;
+  },
+
+  async listDynamicAgents(): Promise<DynamicAgentSpec[]> {
+    const response = await apiClient.get('/dynamic-agents');
+    return response.data;
+  },
+
+  async ensureDynamicAgent(request: {
+    task: string;
+    context?: Record<string, unknown>;
+    allow_create?: boolean;
+  }): Promise<EnsureDynamicAgentResponse> {
+    const response = await apiClient.post('/dynamic-agents/ensure', request);
+    return response.data;
+  },
+
+  async runDynamicAgent(request: {
+    agent_id: string;
+    prompt: string;
+    session_id?: string;
+    task?: string;
+    auto_refine?: boolean;
+    min_score?: number;
+    max_refinement_rounds?: number;
+  }): Promise<RunDynamicAgentResponse> {
+    const response = await apiClient.post('/dynamic-agents/run', request, {
+      timeout: 300000,
+    });
+    return response.data;
+  },
+
+  async reloadDynamicAgents(): Promise<{ status: string; metrics: Record<string, unknown> }> {
+    const response = await apiClient.post('/dynamic-agents/reload');
+    return response.data;
+  },
+
+  async getDynamicAgentsLastRun(agentId?: string): Promise<Record<string, unknown>> {
+    const response = await apiClient.get('/dynamic-agents/last-run', {
+      params: agentId ? { agent_id: agentId } : undefined,
+    });
+    return response.data;
+  },
+
+  async getDynamicAgentLineage(agentId: string): Promise<Record<string, unknown>> {
+    const response = await apiClient.get(`/dynamic-agents/${agentId}/lineage`);
     return response.data;
   },
 };

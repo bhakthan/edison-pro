@@ -2,6 +2,8 @@
 
 A modern TypeScript React frontend for EDISON PRO, an AI-powered electrical transformer data analysis system.
 
+This frontend is part of the root EDISON PRO repository and inherits the project license and repository policies. See ../LICENSE, ../SECURITY.md, ../SUPPORT.md, and ../CODE_OF_CONDUCT.md.
+
 ## 🚀 Quick Start
 
 ```bash

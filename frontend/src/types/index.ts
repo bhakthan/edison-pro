@@ -101,3 +101,39 @@ export interface TemplateExecutionResponse {
   total_execution_time_seconds: number;
   summary: string;
 }
+
+export interface DynamicAgentSpec {
+  agent_id: string;
+  name: string;
+  instructions: string;
+  capabilities: string[];
+  model: string;
+  created_by?: string;
+  created_at?: string;
+  version?: number;
+  last_refined_at?: string | null;
+  status?: string;
+}
+
+export interface DynamicAgentsStatus {
+  available: boolean;
+  provider_available: boolean;
+  metrics: Record<string, unknown>;
+}
+
+export interface EnsureDynamicAgentResponse {
+  status: string;
+  reason: string;
+  agent: DynamicAgentSpec | null;
+}
+
+export interface RunDynamicAgentResponse {
+  agent_id: string;
+  agent_name: string;
+  answer: string;
+  session_id: string;
+  evaluation?: Record<string, any>;
+  refinement_applied?: boolean;
+  refinement_rounds?: number;
+  agent_version?: number;
+}

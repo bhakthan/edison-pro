@@ -22,10 +22,11 @@ import { TemplateSelector } from './components/TemplateSelector';
 import { TemplateResults } from './components/TemplateResults';
 import { FlickeringAnalysis } from './components/FlickeringAnalysis';
 import { InnovativeFeatures } from './components/InnovativeFeatures';
+import { DynamicAgentStudio } from './components/DynamicAgentStudio';
 import './App.css';
 
 function App() {
-  type TabId = 'upload' | 'chat' | 'templates' | 'features' | 'flickering';
+  type TabId = 'upload' | 'chat' | 'templates' | 'features' | 'flickering' | 'dynamic';
   const [activeTab, setActiveTab] = useState<TabId>('upload');
   const [isNavCollapsed, setIsNavCollapsed] = useState(true);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -209,6 +210,12 @@ function App() {
       label: 'Flickering',
       hint: 'Novelty & attention trace',
       icon: Orbit,
+    },
+    {
+      id: 'dynamic',
+      label: 'Dynamic Agents',
+      hint: 'Create and refine specialists',
+      icon: Sparkles,
     },
   ];
 
@@ -480,6 +487,8 @@ function App() {
             </>
           ) : activeTab === 'features' ? (
             <InnovativeFeatures />
+          ) : activeTab === 'dynamic' ? (
+            <DynamicAgentStudio />
           ) : (
             <FlickeringAnalysis />
           )}

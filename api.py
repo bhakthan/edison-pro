@@ -63,6 +63,13 @@ try:
 except ImportError:
     FlickeringSystem = None
 
+try:
+    from agents.dynamic_meta_agent import get_dynamic_registry
+    DYNAMIC_META_AGENT_AVAILABLE = True
+except ImportError:
+    get_dynamic_registry = None
+    DYNAMIC_META_AGENT_AVAILABLE = False
+
 # Innovative Feature Agents (Phase 1 & Phase 2)
 try:
     from agents import (
@@ -214,6 +221,12 @@ def get_flickering():
         )
     return flickering_system
 
+
+def get_dynamic_registry_instance():
+    if not DYNAMIC_META_AGENT_AVAILABLE or get_dynamic_registry is None:
+        return None
+    return get_dynamic_registry()
+
 # ============================================================================
 # Request/Response Models
 # ============================================================================
@@ -288,6 +301,22 @@ class TemplateExecutionResponse(BaseModel):
     results: List[TemplateQuestionResult]
     total_execution_time_seconds: float
     summary: str
+
+
+class DynamicAgentEnsureRequest(BaseModel):
+    task: str
+    context: Optional[Dict[str, Any]] = None
+    allow_create: bool = True
+
+
+class DynamicAgentRunRequest(BaseModel):
+    agent_id: str
+    prompt: str
+    session_id: Optional[str] = None
+    task: Optional[str] = None
+    auto_refine: bool = True
+    min_score: float = 0.72
+    max_refinement_rounds: int = 1
 
 # ============================================================================
 # API Endpoints
@@ -879,6 +908,87 @@ async def get_flickering_status():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/dynamic-agents/status")
+async def get_dynamic_agents_status():
+    registry = get_dynamic_registry_instance()
+    if not registry:
+        return JSONResponse({
+            "available": False,
+            "provider_available": False,
+            "metrics": {},
+        })
+
+    snapshot = registry.status_snapshot()
+    return JSONResponse({
+        "available": True,
+        "provider_available": snapshot.get("provider_available", False),
+        "metrics": snapshot,
+    })
+
+
+@app.get("/dynamic-agents")
+async def list_dynamic_agents():
+    registry = get_dynamic_registry_instance()
+    if not registry:
+        raise HTTPException(status_code=501, detail="Dynamic meta-agent registry not available")
+    return registry.list_agents()
+
+
+@app.post("/dynamic-agents/ensure")
+async def ensure_dynamic_agent(request: DynamicAgentEnsureRequest):
+    registry = get_dynamic_registry_instance()
+    if not registry:
+        raise HTTPException(status_code=501, detail="Dynamic meta-agent registry not available")
+    return await registry.ensure_agent_for_task(
+        task=request.task,
+        context=request.context or {},
+        allow_create=request.allow_create,
+    )
+
+
+@app.post("/dynamic-agents/run")
+async def run_dynamic_agent(request: DynamicAgentRunRequest):
+    registry = get_dynamic_registry_instance()
+    if not registry:
+        raise HTTPException(status_code=501, detail="Dynamic meta-agent registry not available")
+    return await registry.run_agent(
+        agent_id=request.agent_id,
+        prompt=request.prompt,
+        session_id=request.session_id,
+        task=request.task,
+        auto_refine=request.auto_refine,
+        min_score=request.min_score,
+        max_refinement_rounds=request.max_refinement_rounds,
+    )
+
+
+@app.post("/dynamic-agents/reload")
+async def reload_dynamic_agents():
+    registry = get_dynamic_registry_instance()
+    if not registry:
+        raise HTTPException(status_code=501, detail="Dynamic meta-agent registry not available")
+    return {
+        "status": "reloaded",
+        "metrics": registry.reload_from_persistence(),
+    }
+
+
+@app.get("/dynamic-agents/last-run")
+async def get_dynamic_agents_last_run(agent_id: Optional[str] = None):
+    registry = get_dynamic_registry_instance()
+    if not registry:
+        raise HTTPException(status_code=501, detail="Dynamic meta-agent registry not available")
+    return registry.get_last_run_diagnostics(agent_id)
+
+
+@app.get("/dynamic-agents/{agent_id}/lineage")
+async def get_dynamic_agent_lineage(agent_id: str):
+    registry = get_dynamic_registry_instance()
+    if not registry:
+        raise HTTPException(status_code=501, detail="Dynamic meta-agent registry not available")
+    return registry.get_agent_lineage(agent_id)
 
 # ============================================================================
 # Innovative Feature Endpoints

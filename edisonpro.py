@@ -157,6 +157,11 @@ try:
 except ImportError:
     PdfProcessingRouter = None
 
+try:
+    from rust_subsystem import RustParallelSubsystem
+except ImportError:
+    RustParallelSubsystem = None
+
 # Blob storage imports (optional)
 try:
     from blob_storage import BlobStorageManager, create_blob_manager_from_env
@@ -1411,7 +1416,7 @@ GENERAL ENGINEERING DOMAIN EXPERTISE:
         
         return domain_contexts.get(self.domain, domain_contexts["general"])
     
-    async def _extract_with_azure_di(self, image_path: str) -> Optional[Dict[str, Any]]:
+    def _extract_with_azure_di_sync(self, image_path: str) -> Optional[Dict[str, Any]]:
         """Extract structured content using Azure Document Intelligence Layout API.
         
         Returns:
@@ -1572,6 +1577,87 @@ GENERAL ENGINEERING DOMAIN EXPERTISE:
             print(f"   ⚠️  Azure Document Intelligence extraction failed: {e}")
             return None
     
+    async def _extract_with_azure_di(self, image_path: str) -> Optional[Dict[str, Any]]:
+        if not self.di_client:
+            return None
+        return await asyncio.to_thread(self._extract_with_azure_di_sync, image_path)
+
+    async def _extract_images_with_azure_di_parallel(self, image_files: List[str]) -> Dict[str, Dict[str, Any]]:
+        if not self.di_client or not image_files:
+            return {}
+
+        max_concurrency = max(1, int(os.getenv("MAX_CONCURRENT_PAGES", "5")))
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def _run(image_path: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+            async with semaphore:
+                return image_path, await self._extract_with_azure_di(image_path)
+
+        results = await asyncio.gather(*[_run(image_path) for image_path in image_files])
+        return {
+            image_path: result
+            for image_path, result in results
+            if result is not None
+        }
+
+    def _save_image_extraction_artifacts(
+        self,
+        input_folder: str,
+        page_data: List[Dict[str, Any]],
+        extracted_text_blocks: List[str],
+    ) -> None:
+        if not self.intermediate_dir:
+            return
+
+        for index, page_info in enumerate(page_data, start=1):
+            source_file = page_info.get("source_file")
+            if source_file and Path(source_file).exists():
+                save_intermediate_image(
+                    page_info.get("image", ""),
+                    f"image_{index:03d}_{Path(source_file).stem}_original.{Path(source_file).suffix[1:]}",
+                    self.intermediate_dir,
+                    f"Original image {index}: {Path(source_file).name}",
+                )
+
+        if not extracted_text_blocks:
+            return
+
+        complete_text = "\n".join(extracted_text_blocks)
+        save_intermediate_file(
+            complete_text,
+            "00_complete_image_extraction.txt",
+            self.intermediate_dir,
+            "Complete image extraction from all files",
+        )
+
+        summary = f"Image Processing Summary\n{'=' * 40}\n\n"
+        summary += f"Input Folder: {input_folder}\n"
+        summary += f"Total Images: {len(page_data)}\n"
+        summary += f"Total Characters: {len(complete_text)}\n"
+        summary += f"MarkItDown Available: {'Yes' if HAS_MARKITDOWN else 'No'}\n\n"
+
+        method_counts: Dict[str, int] = {}
+        for page_info in page_data:
+            method = page_info.get("extraction_method", "image_direct")
+            method_counts[method] = method_counts.get(method, 0) + 1
+
+        summary += "Extraction Methods Used:\n"
+        for method, count in method_counts.items():
+            summary += f"  {method.upper()}: {count} images\n"
+        summary += "\n"
+
+        for index, page_info in enumerate(page_data, start=1):
+            method = page_info.get("extraction_method", "image_direct")
+            source = Path(page_info.get("source_file", "")).name
+            summary += f"Image {index} ({method.upper()}): {len(page_info.get('text', ''))} chars - {source}\n"
+
+        save_intermediate_file(
+            summary,
+            "01_image_processing_summary.txt",
+            self.intermediate_dir,
+            "Image processing summary",
+        )
+
     async def process_images_from_folder(self, input_folder: str) -> List[Dict[str, Any]]:
         """Enhanced image processing from input folder with o3-pro capabilities"""
         image_files = get_supported_image_files(input_folder)
@@ -1587,134 +1673,123 @@ GENERAL ENGINEERING DOMAIN EXPERTISE:
         for img in image_files:
             print(f"   📷 {Path(img).name}")
         
-        # Convert images to page data format
-        page_data = []
-        all_extracted_text = []
-        
-        for i, image_path in enumerate(image_files):
-            print(f"🖼️  Processing {Path(image_path).name} with o3-pro...")
-            
-            # Convert image to base64
-            img_base64 = convert_image_to_base64(image_path)
-            if not img_base64:
-                continue
-            
-            # Enhanced extraction pipeline: Azure DI → MarkItDown → Direct Visual
-            text_content = ""
-            extraction_method = "image_direct"
-            di_result = None
-            
-            # PRIORITY 1: Try Azure Document Intelligence (best for engineering diagrams)
-            if self.di_client:
-                di_result = await self._extract_with_azure_di(image_path)
-                if di_result and di_result.get('confidence', 0) > 0.3:  # Reasonable confidence threshold
+        page_data: List[Dict[str, Any]] = []
+        all_extracted_text: List[str] = []
+        rust_subsystem = RustParallelSubsystem() if RustParallelSubsystem else None
+        native_payload: Dict[str, Any] = {}
+
+        if rust_subsystem and rust_subsystem.active_runtime() == "rust-production":
+            try:
+                native_payload = rust_subsystem.extract_image_folder_pages(input_folder, use_markitdown=HAS_MARKITDOWN)
+                page_data = native_payload.get("page_data", []) or []
+                if page_data:
+                    print(f"   ⚙️  Native image extraction backend: {native_payload.get('backend', 'rust-native')}")
+            except Exception as exc:
+                print(f"   ⚠️  Native image extraction unavailable, falling back to Python path: {exc}")
+                page_data = []
+
+        di_results: Dict[str, Dict[str, Any]] = {}
+        if self.di_client:
+            di_results = await self._extract_images_with_azure_di_parallel(image_files)
+
+        if page_data:
+            for i, page_info in enumerate(page_data, start=1):
+                source_file = page_info.get("source_file")
+                if source_file and source_file in di_results:
+                    di_result = di_results[source_file]
+                    if di_result.get("confidence", 0) > 0.3:
+                        page_info["text"] = di_result["text"]
+                        page_info["extraction_method"] = "azure_document_intelligence"
+                        if self.intermediate_dir:
+                            save_intermediate_json(
+                                di_result,
+                                f"image_{i:03d}_{Path(source_file).stem}_azure_di.json",
+                                self.intermediate_dir,
+                                f"Azure Document Intelligence structured output for image {i}",
+                            )
+
+                image_text_content = f"=== IMAGE {i} ({page_info.get('extraction_method', 'image_direct').upper()}) ===\n\n"
+                image_text_content += f"Source: {source_file}\n"
+                image_text_content += f"Method: {page_info.get('extraction_method', 'image_direct')}\n\n"
+                image_text_content += f"{page_info.get('text', '')}\n\n"
+                all_extracted_text.append(image_text_content)
+
+                if self.intermediate_dir:
+                    save_intermediate_file(
+                        image_text_content,
+                        f"image_{i:03d}_extracted_text_{page_info.get('extraction_method', 'image_direct')}.txt",
+                        self.intermediate_dir,
+                        f"Image {i} {page_info.get('extraction_method', 'image_direct').upper()} text extraction",
+                    )
+        else:
+            for i, image_path in enumerate(image_files):
+                print(f"🖼️  Processing {Path(image_path).name} with o3-pro...")
+
+                img_base64 = convert_image_to_base64(image_path)
+                if not img_base64:
+                    continue
+
+                text_content = ""
+                extraction_method = "image_direct"
+                di_result = di_results.get(image_path)
+
+                if di_result and di_result.get("confidence", 0) > 0.3:
                     extraction_method = "azure_document_intelligence"
-                    text_content = di_result['text']
+                    text_content = di_result["text"]
                     print(f"   ✅ Azure DI: Extracted {len(text_content)} characters (confidence: {di_result['confidence']:.2%})")
-                    
-                    # Save ADI structured output
                     if self.intermediate_dir:
                         save_intermediate_json(
                             di_result,
                             f"image_{i + 1:03d}_{Path(image_path).stem}_azure_di.json",
                             self.intermediate_dir,
-                            f"Azure Document Intelligence structured output for image {i + 1}"
+                            f"Azure Document Intelligence structured output for image {i + 1}",
                         )
-            
-            # PRIORITY 2: Fallback to MarkItDown OCR if ADI unavailable or low confidence
-            if not di_result and HAS_MARKITDOWN:
-                try:
-                    print(f"   📝 Attempting MarkItDown OCR...")
-                    md = MarkItDown()
-                    result = md.convert(image_path)
-                    text_content = result.text_content if hasattr(result, 'text_content') else str(result)
-                    if len(text_content.strip()) > 10:
-                        extraction_method = "markitdown_ocr"
-                        text_content = f"Engineering diagram: {Path(image_path).name}\n\nExtracted text content:\n{text_content}\n\nThis is an engineering diagram image containing technical specifications, components, and layout information."
-                        print(f"   ✅ Extracted {len(text_content)} characters via OCR")
-                    else:
-                        text_content = f"Engineering diagram image: {Path(image_path).name}\n\nThis appears to be a technical drawing or schematic containing engineering components, symbols, and specifications. The image shows various engineering elements that require visual analysis for proper interpretation."
-                        print(f"   📊 No text detected - will use pure visual analysis")
-                except Exception as e:
-                    print(f"   ⚠️  OCR failed: {e}")
-                    text_content = f"Engineering diagram image: {Path(image_path).name}\n\nThis is a technical drawing or engineering schematic that contains visual elements requiring expert analysis. The image may include components, symbols, specifications, and technical details."
-            
-            # PRIORITY 3: Pure visual analysis fallback
-            if not text_content or len(text_content.strip()) < 50:
-                text_content = f"Engineering diagram image: {Path(image_path).name}\n\nThis is a technical engineering diagram image containing components, symbols, and specifications. The image requires visual analysis to identify and interpret engineering elements, connections, and technical details."
-            
-            # Save to intermediate files if available
-            if self.intermediate_dir:
-                # Save original image
-                save_intermediate_image(
-                    img_base64,
-                    f"image_{i + 1:03d}_{Path(image_path).stem}_original.{Path(image_path).suffix[1:]}",
-                    self.intermediate_dir,
-                    f"Original image {i + 1}: {Path(image_path).name}"
-                )
-                
-                # Save extracted text
+                elif HAS_MARKITDOWN:
+                    try:
+                        print("   📝 Attempting MarkItDown OCR...")
+                        md = MarkItDown()
+                        result = md.convert(image_path)
+                        text_content = result.text_content if hasattr(result, "text_content") else str(result)
+                        if len(text_content.strip()) > 10:
+                            extraction_method = "markitdown_ocr"
+                            text_content = f"Engineering diagram: {Path(image_path).name}\n\nExtracted text content:\n{text_content}\n\nThis is an engineering diagram image containing technical specifications, components, and layout information."
+                            print(f"   ✅ Extracted {len(text_content)} characters via OCR")
+                        else:
+                            print("   📊 No text detected - will use pure visual analysis")
+                    except Exception as exc:
+                        print(f"   ⚠️  OCR failed: {exc}")
+
+                if not text_content or len(text_content.strip()) < 50:
+                    text_content = (
+                        f"Engineering diagram image: {Path(image_path).name}\n\n"
+                        "This is a technical engineering diagram image containing components, symbols, and specifications. "
+                        "The image requires visual analysis to identify and interpret engineering elements, connections, and technical details."
+                    )
+
                 image_text_content = f"=== IMAGE {i + 1} ({extraction_method.upper()}) ===\n\n"
                 image_text_content += f"Source: {image_path}\n"
                 image_text_content += f"Method: {extraction_method}\n\n"
                 image_text_content += f"{text_content}\n\n"
                 all_extracted_text.append(image_text_content)
-                
-                save_intermediate_file(
-                    image_text_content,
-                    f"image_{i + 1:03d}_extracted_text_{extraction_method}.txt",
-                    self.intermediate_dir,
-                    f"Image {i + 1} {extraction_method.upper()} text extraction"
-                )
-            
-            page_data.append({
-                "page_num": i,
-                "text": text_content,
-                "image": img_base64,
-                "images": [],
-                "extraction_method": extraction_method,
-                "source_file": image_path
-            })
-        
-        # Save complete extraction summary if intermediate dir exists
-        if self.intermediate_dir and all_extracted_text:
-            complete_text = "\n".join(all_extracted_text)
-            save_intermediate_file(
-                complete_text,
-                "00_complete_image_extraction.txt",
-                self.intermediate_dir,
-                "Complete image extraction from all files"
-            )
-            
-            # Save extraction summary
-            summary = f"Image Processing Summary\n{'=' * 40}\n\n"
-            summary += f"Input Folder: {input_folder}\n"
-            summary += f"Total Images: {len(page_data)}\n"
-            summary += f"Total Characters: {len(complete_text)}\n"
-            summary += f"MarkItDown Available: {'Yes' if HAS_MARKITDOWN else 'No'}\n\n"
-            
-            # Count extraction methods used
-            method_counts = {}
-            for page_info in page_data:
-                method = page_info.get('extraction_method', 'image_direct')
-                method_counts[method] = method_counts.get(method, 0) + 1
-            
-            summary += "Extraction Methods Used:\n"
-            for method, count in method_counts.items():
-                summary += f"  {method.upper()}: {count} images\n"
-            summary += "\n"
-            
-            for i, page_info in enumerate(page_data):
-                method = page_info.get('extraction_method', 'image_direct')
-                source = Path(page_info.get('source_file', '')).name
-                summary += f"Image {i + 1} ({method.upper()}): {len(page_info['text'])} chars - {source}\n"
-            
-            save_intermediate_file(
-                summary,
-                "01_image_processing_summary.txt",
-                self.intermediate_dir,
-                "Image processing summary"
-            )
+
+                if self.intermediate_dir:
+                    save_intermediate_file(
+                        image_text_content,
+                        f"image_{i + 1:03d}_extracted_text_{extraction_method}.txt",
+                        self.intermediate_dir,
+                        f"Image {i + 1} {extraction_method.upper()} text extraction",
+                    )
+
+                page_data.append({
+                    "page_num": i,
+                    "text": text_content,
+                    "image": img_base64,
+                    "images": [],
+                    "extraction_method": extraction_method,
+                    "source_file": image_path,
+                })
+
+        self._save_image_extraction_artifacts(input_folder, page_data, all_extracted_text)
         
         print(f"✅ Processed {len(page_data)} images with o3-pro enhanced analysis")
         

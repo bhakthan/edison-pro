@@ -85,7 +85,7 @@ class CodeAgentHandler:
             # Check if we have minimum required credentials
             if not self.project_endpoint or not self.agent_id:
                 logger.warning("Code Agent credentials not configured in .env - feature disabled")
-                logger.info("Required: AZURE_OPENAI_AGENT_ENDPOINT, AZURE_OPENAI_AGENT_PROJECT_ID")
+                logger.info("Required: AZURE_OPENAI_AGENT_PROJECT_ENDPOINT, AZURE_OPENAI_AGENT_ID")
                 return False
             
             # Azure AI Projects SDK requires TokenCredential (not API key)
@@ -126,8 +126,8 @@ class CodeAgentHandler:
             logger.info("   3️⃣  Env Vars:  Set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET")
             logger.info("")
             logger.info("   Required .env variables:")
-            logger.info("   - AZURE_OPENAI_AGENT_ENDPOINT=https://xxx.openai.azure.com")
-            logger.info("   - AZURE_OPENAI_AGENT_PROJECT_ID=your-agent-id")
+            logger.info("   - AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}")
+            logger.info("   - AZURE_OPENAI_AGENT_ID=your-agent-id")
             logger.info("")
             self.available = False
             return False

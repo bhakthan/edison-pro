@@ -121,6 +121,7 @@ memory_atlas/
 chroma_db/
 *.chroma
 chroma.sqlite3
+feedback_tracking.db
 
 # =====================
 # MEDIA FILES
@@ -213,8 +214,30 @@ FEATURE_COMPLETE_*.md
 # Questions and test files
 questions/
 
+# Support policy is local-only for this repository workflow
+SUPPORT.md
+
+# Local-only status report scrubbed from git history
+FINAL_STATUS_REPORT.md
+
 # =====================
 # MISC
 # =====================
 misc/
 test/
+
+# =====================
+# RUST NATIVE SUBSYSTEM
+# =====================
+# Local native runtime workspace and build outputs
+rust/
+
+# Optional local runtime helpers
+build-production-runtime.ps1
+rust_subsystem.py
+
+# Cargo lockfiles and compiled shared libraries
+Cargo.lock
+*.rlib
+*.dll
+*.pyd

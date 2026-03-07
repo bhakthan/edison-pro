@@ -2,6 +2,8 @@
 
 Advanced Multi-Agent System for analyzing complex engineering diagrams using Azure OpenAI gpt-5-pro with enhanced reasoning capabilities.
 
+This repository is provided under the MIT license. See LICENSE for details, SECURITY.md for vulnerability reporting, SUPPORT.md for the self-service support policy, and CODE_OF_CONDUCT.md for participation expectations.
+
 ## 🎯 Overview
 
 EDISON PRO is a sophisticated multi-agent system that analyzes engineering diagrams (electrical schematics, mechanical assemblies, P&IDs, civil plans, structural drawings, etc.) and provides intelligent interpretation, component extraction, and interactive question-answering capabilities powered by Azure OpenAI's **gpt-5-pro model** with the Responses API.
@@ -226,6 +228,27 @@ The system automatically detects when a question requires data transformation vs
 - **Quick Start**: `CODE_AGENT_QUICKSTART.md` - Setup and usage guide
 - **Architecture**: `CODE_AGENT_INTEGRATION.md` - Complete technical documentation
 - **Implementation**: `PHASE_1_2_COMPLETE.md` - Implementation details
+
+### Code Agent Environment
+
+Use the current Azure AI Projects variable names when enabling the code agent:
+
+```bash
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+AZURE_OPENAI_AGENT_ID={your-agent-id}
+AZURE_TENANT_ID={your-tenant-id}
+# Optional service principal auth
+# AZURE_CLIENT_ID={your-client-id}
+# AZURE_CLIENT_SECRET={your-client-secret}
+
+# Native runtime controls
+EDISON_RUNTIME_PROFILE=demo
+EDISON_RUST_ENABLED=false
+EDISON_RUST_FALLBACK_WORKERS=4
+
+# Dynamic meta-agent model override
+DYNAMIC_AGENT_MODEL=gpt-5-pro
+```
 
 ---
 
