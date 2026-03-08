@@ -1,0 +1,29 @@
+flowchart TD
+    A[User uploads one PDF or multiple images] --> B[FastAPI /upload saves files in uploads/]
+    B --> C{Upload shape}
+    C -->|Single PDF| D[Orchestrator process_upload_batch -> analyze_document]
+    C -->|Single image| E[Orchestrator process_document -> analyze_images_from_folder]
+    C -->|Multiple images| F[Orchestrator process_upload_batch -> analyze_images_from_folder]
+
+    D --> G[PDF router chooses PyMuPDF or MarkItDown]
+    G --> H[Each page rendered to image]
+    E --> I[Image folder loader gathers images]
+    F --> I
+    I --> J[Optional Azure Document Intelligence on images]
+
+    H --> K[LLM page structure analysis]
+    J --> K
+    K --> L[Smart chunking]
+    L --> M[LLM visual element extraction]
+    M --> N[Enriched chunk text built]
+    N --> O[Azure OpenAI embeddings generated]
+    O --> P[Chunks staged in ContextManager]
+    P --> Q[Batch upload to Azure AI Search]
+
+    R[User asks question via /ask] --> S{Question type}
+    S -->|Understanding / engineering QA| T[Hybrid retrieval from Azure AI Search]
+    S -->|Tables, charts, exports, calculations| U[Code Agent path]
+    T --> V[gpt-5-pro answers with evidence and reasoning]
+    U --> W[GPT-5 Code Agent returns tables / charts / files]
+    V --> X[Answer returned to frontend]
+    W --> X

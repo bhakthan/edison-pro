@@ -33,20 +33,43 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
     } catch { /* backend may not have docs yet */ }
   };
 
-  const handleFile = async (file: File) => {
-    if (!VALID_EXT.test(file.name)) {
+  const handleFiles = async (selectedFiles: File[]) => {
+    if (!selectedFiles.length) {
+      return;
+    }
+
+    const invalidFiles = selectedFiles.filter((file) => !VALID_EXT.test(file.name));
+    if (invalidFiles.length > 0) {
       setError('Unsupported file type. Please upload a PDF or image (PNG, JPG, TIFF, WebP, BMP).');
       return;
     }
+
+    const pdfFiles = selectedFiles.filter((file) => /\.pdf$/i.test(file.name));
+    const imageFiles = selectedFiles.filter((file) => !/\.pdf$/i.test(file.name));
+
+    if (pdfFiles.length > 1) {
+      setError('Upload one PDF at a time. Batch upload is supported for image sets only.');
+      return;
+    }
+
+    if (pdfFiles.length === 1 && imageFiles.length > 0) {
+      setError('Do not mix a PDF with images in the same upload. Upload either one PDF or a batch of images.');
+      return;
+    }
+
     setError('');
     setUploading(true);
     setProgress(0);
     setUploadStatus(null);
     try {
-      const status = await api.uploadDocument(file, (p) => setProgress(p));
+      const status = await api.uploadDocument(selectedFiles, (p) => setProgress(p));
       setUploadStatus(status);
       await loadDocuments();
-      onDocumentReady(file.name);
+      if (status.file_count && status.file_count > 1) {
+        onDocumentReady(`${status.file_count} images`);
+      } else {
+        onDocumentReady(status.filename || selectedFiles[0].name);
+      }
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Upload failed. Please try again.');
     } finally {
@@ -59,13 +82,16 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
+    const droppedFiles = Array.from(e.dataTransfer.files || []);
+    if (droppedFiles.length > 0) handleFiles(droppedFiles);
   }, []);
 
   const onFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) { handleFile(file); e.target.value = ''; }
+    const selectedFiles = Array.from(e.target.files || []);
+    if (selectedFiles.length > 0) {
+      handleFiles(selectedFiles);
+      e.target.value = '';
+    }
   };
 
   const isReady = !!uploadStatus || !!activeDocument;
@@ -131,6 +157,7 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
           ref={fileInputRef}
           type="file"
           accept={ACCEPTED}
+          multiple
           onChange={onFileInput}
           className="sr-only"
           aria-label="File upload input"
@@ -142,7 +169,7 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
             <div className="text-center">
               <p className="text-lg font-semibold text-gray-800">Uploading &amp; analysing…</p>
               <p className="text-sm text-gray-500 mt-1">
-                Edison Pro is extracting content from your document
+                Edison Pro is extracting content from your upload
               </p>
             </div>
             <div className="w-64 bg-gray-200 rounded-full h-2.5">
@@ -161,6 +188,11 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
             <div className="text-center">
               <p className="text-xl font-bold text-gray-900">Document ready!</p>
               <p className="text-sm text-gray-500 mt-1">{uploadStatus.message}</p>
+              {uploadStatus.file_count && uploadStatus.file_count > 1 ? (
+                <p className="text-xs text-gray-400 mt-2">
+                  Batch contains {uploadStatus.file_count} images and produced {uploadStatus.chunks ?? 0} chunks.
+                </p>
+              ) : null}
             </div>
             <p className="text-xs text-gray-400">Click to upload another document</p>
           </>
@@ -171,7 +203,7 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
             </div>
             <div className="text-center">
               <p className="text-xl font-semibold text-gray-800">
-                {isDragging ? 'Drop to upload' : 'Drop your file here'}
+                {isDragging ? 'Drop to upload' : 'Drop your file(s) here'}
               </p>
               <p className="text-gray-500 mt-1 text-sm">or click to browse</p>
             </div>
@@ -186,7 +218,7 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
               ))}
             </div>
             <p className="text-xs text-gray-400">
-              P&amp;ID diagrams · Electrical schematics · Civil plans · Structural drawings
+              Upload one PDF or a batch of related images for one combined analysis
             </p>
           </>
         )}

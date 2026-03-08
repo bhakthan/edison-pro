@@ -44,8 +44,15 @@ export interface Chart {
 }
 
 export interface AnalysisStatus {
-  status: string;
+  status?: string;
+  success?: boolean;
   message: string;
+  filename?: string;
+  filenames?: string[];
+  file_count?: number;
+  input_type?: string;
+  chunks?: number;
+  images_processed?: number;
   files?: string[];
 }
 

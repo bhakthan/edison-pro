@@ -4,6 +4,7 @@ Provides HTTP endpoints for the TypeScript frontend
 """
 import os
 import asyncio
+import shutil
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +53,12 @@ except ImportError:
     # Fallback
     def get_code_agent():
         return type('obj', (object,), {'available': False})()
+
+try:
+    from upload_handler import list_indexed_documents
+except ImportError:
+    def list_indexed_documents():
+        return []
 
 try:
     from results_generator import generate_results_page
@@ -342,36 +349,68 @@ async def get_status():
     )
 
 @app.post("/upload")
-async def upload_document(file: UploadFile = File(...)):
-    """Upload and analyze an engineering document"""
+async def upload_document(
+    files: Optional[List[UploadFile]] = File(None),
+    file: Optional[UploadFile] = File(None),
+):
+    """Upload and analyze an engineering document or image batch."""
     try:
-        # Save uploaded file temporarily
         upload_dir = Path("uploads")
         upload_dir.mkdir(exist_ok=True)
-        
-        file_path = upload_dir / file.filename
-        with open(file_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
-        
-        # Process document with orchestrator
+
+        uploaded_files: List[UploadFile] = []
+        if files:
+            uploaded_files.extend(files)
+        if file is not None:
+            uploaded_files.append(file)
+
+        uploaded_files = [item for item in uploaded_files if item and item.filename]
+        if not uploaded_files:
+            raise HTTPException(status_code=400, detail="No files were uploaded")
+
+        is_batch = len(uploaded_files) > 1
+        batch_dir = upload_dir / f"batch_{Path(uploaded_files[0].filename).stem}_{asyncio.get_running_loop().time():.0f}"
+        target_dir = batch_dir if is_batch else upload_dir
+        target_dir.mkdir(exist_ok=True)
+
+        saved_paths: List[str] = []
+        filenames: List[str] = []
+        for uploaded in uploaded_files:
+            safe_name = Path(uploaded.filename).name
+            filenames.append(safe_name)
+            file_path = target_dir / safe_name
+            content = await uploaded.read()
+            with open(file_path, "wb") as handle:
+                handle.write(content)
+            saved_paths.append(str(file_path))
+
         orch = get_orchestrator()
-        
-        # Run analysis asynchronously
-        result = await asyncio.to_thread(
-            orch.process_document,
-            str(file_path)
-        )
-        
+
+        result = await asyncio.to_thread(orch.process_upload_batch, saved_paths)
+
+        processed_count = result.get("images_processed") or len(saved_paths)
+        label = filenames[0] if len(filenames) == 1 else f"{len(filenames)} files"
+
         return {
             "success": True,
-            "filename": file.filename,
-            "message": "Document processed successfully",
-            "chunks": result.get("chunks", 0) if result else 0
+            "filename": label,
+            "filenames": filenames,
+            "file_count": len(filenames),
+            "input_type": result.get("input_type", "document") if result else "document",
+            "message": (
+                f"Processed {processed_count} image(s) as one analysis batch"
+                if result and result.get("input_type") == "image_batch"
+                else "Document processed successfully"
+            ),
+            "chunks": result.get("chunks", 0) if result else 0,
+            "images_processed": result.get("images_processed", 0) if result else 0,
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'batch_dir' in locals() and batch_dir.exists():
+            shutil.rmtree(batch_dir, ignore_errors=True)
 
 @app.post("/ask", response_model=QuestionResponse)
 async def ask_question(request: QuestionRequest):
@@ -510,6 +549,20 @@ async def get_chart(filename: str):
             path=str(chart_path),
             media_type="text/html"
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/documents")
+async def list_documents():
+    """List uploaded/analyzed documents for the frontend upload panel."""
+    try:
+        documents = list_indexed_documents()
+        filenames = [
+            doc.get("filename")
+            for doc in documents
+            if isinstance(doc, dict) and doc.get("filename")
+        ]
+        return filenames
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

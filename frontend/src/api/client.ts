@@ -40,9 +40,11 @@ export const api = {
   },
 
   // Upload and analyze document
-  async uploadDocument(file: File, onProgress?: (progress: number) => void): Promise<AnalysisStatus> {
+  async uploadDocument(files: File[], onProgress?: (progress: number) => void): Promise<AnalysisStatus> {
     const formData = new FormData();
-    formData.append('file', file);
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
 
     const response = await apiClient.post('/upload', formData, {
       headers: {

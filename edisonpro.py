@@ -46,6 +46,7 @@ FEATURES:
 import os
 import json
 import base64
+import shutil
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -3117,6 +3118,111 @@ class DiagramAnalysisOrchestratorPro:
         if insights:
             for insight in insights:
                 print(f"      • Insight: {insight}")
+
+    def process_document(self, file_path: str, domain: str = "general", auto_plan: bool = True) -> Dict[str, Any]:
+        """Compatibility wrapper used by the FastAPI upload endpoint.
+
+        Routes a single uploaded file into the appropriate async ingestion path and
+        returns a compact summary for the API layer.
+        """
+        input_path = Path(file_path)
+        if not input_path.exists():
+            raise FileNotFoundError(f"Input file not found: {file_path}")
+
+        suffix = input_path.suffix.lower()
+        pdf_extensions = {".pdf"}
+        image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".gif", ".webp", ".svg"}
+
+        if suffix in pdf_extensions:
+            result = asyncio.run(self.analyze_document(str(input_path), domain=domain, auto_plan=auto_plan))
+            return {
+                "status": result.get("status", "success"),
+                "input_type": "pdf",
+                "chunks": result.get("chunks_processed", len(self.processed_chunks)),
+                "visual_elements": result.get("visual_elements", 0),
+                "intermediate_dir": result.get("intermediate_dir"),
+                "pdf_routing_primary": result.get("pdf_routing_primary"),
+                "pdf_classification": result.get("pdf_classification"),
+            }
+
+        if suffix in image_extensions:
+            temp_upload_dir = input_path.parent / f"{input_path.stem}_single_upload"
+            temp_upload_dir.mkdir(exist_ok=True)
+            temp_image_path = temp_upload_dir / input_path.name
+            shutil.copy2(input_path, temp_image_path)
+            try:
+                result = asyncio.run(self.analyze_images_from_folder(str(temp_upload_dir), domain=domain, auto_plan=auto_plan))
+            finally:
+                shutil.rmtree(temp_upload_dir, ignore_errors=True)
+
+            return {
+                "status": result.get("status", "success"),
+                "input_type": "image",
+                "chunks": result.get("chunks_processed", len(self.processed_chunks)),
+                "images_processed": result.get("images_processed", 1),
+                "visual_elements": result.get("visual_elements", 0),
+                "intermediate_dir": result.get("intermediate_dir"),
+            }
+
+        raise ValueError(
+            f"Unsupported upload type '{suffix or 'unknown'}'. Supported types: PDF, JPG, JPEG, PNG, BMP, TIFF, GIF, WEBP, SVG"
+        )
+
+    def process_upload_batch(
+        self,
+        file_paths: List[str],
+        domain: str = "general",
+        auto_plan: bool = True,
+    ) -> Dict[str, Any]:
+        """Process uploaded files from the FastAPI layer.
+
+        Rules:
+        - one PDF: use the PDF ingestion path
+        - one image: use the single-document compatibility path
+        - multiple images: treat them as one image-folder analysis batch
+        - mixed PDFs and images: reject explicitly
+        """
+        if not file_paths:
+            raise ValueError("No uploaded files were provided")
+
+        resolved_paths = [Path(path) for path in file_paths]
+        missing = [str(path) for path in resolved_paths if not path.exists()]
+        if missing:
+            raise FileNotFoundError(f"Uploaded files not found: {', '.join(missing)}")
+
+        pdf_extensions = {".pdf"}
+        image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".gif", ".webp", ".svg"}
+
+        pdf_paths = [path for path in resolved_paths if path.suffix.lower() in pdf_extensions]
+        image_paths = [path for path in resolved_paths if path.suffix.lower() in image_extensions]
+        unsupported_paths = [path for path in resolved_paths if path.suffix.lower() not in pdf_extensions | image_extensions]
+
+        if unsupported_paths:
+            unsupported_display = ", ".join(path.name for path in unsupported_paths)
+            raise ValueError(f"Unsupported upload type(s): {unsupported_display}")
+
+        if pdf_paths and image_paths:
+            raise ValueError("Upload either a single PDF or one or more images in the same request, not a mixed batch")
+
+        if len(pdf_paths) > 1:
+            raise ValueError("Upload one PDF at a time. Multi-file batch upload is supported for image sets only")
+
+        if len(resolved_paths) == 1:
+            return self.process_document(str(resolved_paths[0]), domain=domain, auto_plan=auto_plan)
+
+        if not image_paths:
+            raise ValueError("Multi-file batch upload currently supports image sets only")
+
+        batch_dir = resolved_paths[0].parent
+        result = asyncio.run(self.analyze_images_from_folder(str(batch_dir), domain=domain, auto_plan=auto_plan))
+        return {
+            "status": result.get("status", "success"),
+            "input_type": "image_batch",
+            "chunks": result.get("chunks_processed", len(self.processed_chunks)),
+            "images_processed": result.get("images_processed", len(image_paths)),
+            "visual_elements": result.get("visual_elements", 0),
+            "intermediate_dir": result.get("intermediate_dir"),
+        }
     
     
     async def analyze_images_from_folder(self, input_folder: str, domain: str = "general", auto_plan: bool = True) -> Dict[str, Any]:

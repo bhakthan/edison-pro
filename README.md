@@ -39,6 +39,10 @@ EDISON PRO is a sophisticated multi-agent system that analyzes engineering diagr
 - **🧠 Memory Atlas (NEW)**: Continuous learning system that stores patterns as 512-dimensional embeddings for instant recall
 - **🌊 Flickering Cognitive Analysis (NEW)**: Brain-inspired system that oscillates between current perception and historical patterns to detect novelty
 
+### Upload To Answer Flow
+
+A simple end-to-end flow diagram for the current FastAPI ingestion path is available in [architecture/upload_to_answer_flow.mmd](architecture/upload_to_answer_flow.mmd).
+
 ### 🆕 Latest Enhancement: Comprehensive Results Page
 
 EDISON PRO now automatically generates **comprehensive HTML results pages** that consolidate all your analysis outputs in a beautifully formatted, professional report.
