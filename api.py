@@ -4,6 +4,7 @@ Provides HTTP endpoints for the TypeScript frontend
 """
 import os
 import asyncio
+import base64
 import shutil
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -69,6 +70,14 @@ try:
     from agents import FlickeringSystem
 except ImportError:
     FlickeringSystem = None
+
+try:
+    from agents.pid_agent import PIDDigitizationAgent as _PIDAgent, create_pid_digitization_agent as _create_pid
+    PID_AGENT_AVAILABLE = True
+except ImportError:
+    _PIDAgent = None
+    _create_pid = None
+    PID_AGENT_AVAILABLE = False
 
 try:
     from agents.dynamic_meta_agent import get_dynamic_registry
@@ -269,6 +278,39 @@ class TemplateExecutionRequest(BaseModel):
 
 class TemplateSearchRequest(BaseModel):
     keywords: List[str]
+
+# ── P&ID Digitization models ────────────────────────────────────────────────
+class PIDAnalysisRequest(BaseModel):
+    """Request for full P&ID digitization pipeline."""
+    image_path: Optional[str] = None       # absolute or relative path on server
+    image_base64: Optional[str] = None     # base64-encoded JPEG/PNG bytes
+    filename: Optional[str] = "pid_image"
+    sheet_id: Optional[str] = "sheet_1"
+    enable_ocr: Optional[bool] = True
+    enable_graph: Optional[bool] = True
+
+class PIDAnalysisResponse(BaseModel):
+    success: bool
+    filename: str
+    sheet_id: str
+    image_width: int
+    image_height: int
+    symbol_count: int
+    line_count: int
+    text_token_count: int
+    node_count: int
+    edge_count: int
+    traversal_path_count: int
+    symbols: List[Dict[str, Any]]
+    lines: List[Dict[str, Any]]
+    text_annotations: List[Dict[str, Any]]
+    nodes: List[Dict[str, Any]]
+    edges: List[Dict[str, Any]]
+    traversal_paths: List[Dict[str, Any]]
+    processing_stages: List[str]
+    warnings: List[str]
+    latency_ms: int
+
 
 class FlickeringAnalysisRequest(BaseModel):
     """Request model for flickering analysis"""
@@ -961,6 +1003,101 @@ async def get_flickering_status():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# P&ID Digitization Endpoint
+# ============================================================================
+
+@app.post("/upload/pid")
+async def upload_pid_image(file: UploadFile = File(...)):
+    """
+    Upload a P&ID image file and run the full 5-stage digitization pipeline.
+
+    Returns structured JSON: symbols, lines, OCR tokens, connectivity graph,
+    BFS traversal paths, and per-stage timing metadata.
+    """
+    if not PID_AGENT_AVAILABLE:
+        raise HTTPException(status_code=501, detail="P&ID digitization agent not available")
+
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
+    safe_name = Path(file.filename or "pid_upload.jpg").name
+    save_path = upload_dir / safe_name
+    try:
+        content = await file.read()
+        with open(save_path, "wb") as fh:
+            fh.write(content)
+
+        agent: _PIDAgent = _create_pid()
+        result = await asyncio.to_thread(
+            agent.digitize_to_dict,
+            image_path=str(save_path),
+            sheet_id=safe_name,
+        )
+        return JSONResponse({"success": True, "filename": safe_name, **result})
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/analyze/pid", response_model=PIDAnalysisResponse)
+async def analyze_pid(request: PIDAnalysisRequest):
+    """
+    Run the P&ID digitization pipeline on an already-uploaded image.
+
+    Accepts either an ``image_path`` (server-side file path) or
+    ``image_base64`` (raw base64-encoded bytes).
+
+    Pipeline stages
+    ---------------
+    1. Image Preprocessing  (grayscale, binarisation, thinning)
+    2. Symbol Detection     (Azure OpenAI vision — 50+ P&ID symbols)
+    3. Text / OCR Detection (Azure AI Document Intelligence)
+    4. Line Detection       (Hough Transform via numpy)
+    5. Graph + Traversal    (NetworkX DiGraph, BFS flow propagation)
+    """
+    if not PID_AGENT_AVAILABLE:
+        raise HTTPException(status_code=501, detail="P&ID digitization agent not available")
+
+    # Validate inputs
+    if not request.image_path and not request.image_base64:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide either 'image_path' or 'image_base64'",
+        )
+
+    try:
+        agent: _PIDAgent = _create_pid()
+        kwargs: Dict[str, Any] = {"sheet_id": request.sheet_id or "sheet_1"}
+        if request.image_base64:
+            kwargs["image_bytes"] = base64.b64decode(request.image_base64)
+        else:
+            # Prevent path traversal: only allow paths under uploads/ or input/
+            requested = Path(request.image_path)
+            allowed_roots = [Path("uploads").resolve(), Path("input").resolve()]
+            resolved = requested.resolve()
+            if not any(str(resolved).startswith(str(r)) for r in allowed_roots):
+                raise HTTPException(
+                    status_code=403,
+                    detail="image_path must be inside the uploads/ or input/ directory",
+                )
+            kwargs["image_path"] = str(resolved)
+
+        result = await asyncio.to_thread(agent.digitize_to_dict, **kwargs)
+
+        return PIDAnalysisResponse(
+            success=True,
+            filename=request.filename or Path(request.image_path or "unknown").name,
+            **result,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/dynamic-agents/status")

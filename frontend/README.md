@@ -193,10 +193,11 @@ python api_server.py
 
 ### Environment Configuration
 
-Edit `.env` to set the backend URL:
+Create `frontend/.env.local` (or copy `frontend/.env.example`) to override the backend URL.
+If you do nothing, the React app defaults to `http://localhost:8000` in code.
 
 ```env
-VITE_API_URL=http://localhost:7861
+VITE_API_URL=http://localhost:8000
 ```
 
 ## 🎨 Features

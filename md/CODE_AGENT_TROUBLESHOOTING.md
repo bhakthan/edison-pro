@@ -30,20 +30,20 @@ Token tenant 72f988bf-86f1-41af-91ab-2d7cd011db47 does not match resource tenant
 #### Option A: Switch to API Key Authentication (Recommended)
 Add to `.env`:
 ```env
-AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
-AZURE_OPENAI_AGENT_PROJECT_ID=your-agent-project-id
-AZURE_OPENAI_AGENT_API_KEY=your-api-key-here
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
 
-# Make sure this is NOT set or set to false
-AZURE_OPENAI_AGENT_USE_MANAGED_IDENTITY=false
+# Optional
+CODE_AGENT_ENABLE_DYNAMIC_FALLBACK=true
 ```
 
 #### Option B: Use Correct Tenant for Managed Identity
 Add tenant ID to `.env`:
 ```env
-AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
-AZURE_OPENAI_AGENT_PROJECT_ID=your-agent-project-id
-AZURE_OPENAI_AGENT_USE_MANAGED_IDENTITY=true
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
 AZURE_TENANT_ID=your-correct-tenant-id
 ```
 
@@ -66,8 +66,8 @@ credential = DefaultAzureCredential(tenant_id=os.getenv("AZURE_TENANT_ID"))
 **Solution:** Add to `.env`:
 ```env
 # Minimum required
-AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
-AZURE_OPENAI_AGENT_PROJECT_ID=your-agent-id
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
 
 # Choose one authentication method:
 # Option 1: API Key (simpler)
@@ -103,14 +103,14 @@ Failed to initialize Code Agent: 401 Unauthorized
 Failed to initialize Code Agent: Agent 'xxx' not found
 ```
 
-**Cause:** `AZURE_OPENAI_AGENT_PROJECT_ID` is incorrect or agent was deleted.
+**Cause:** `AZURE_OPENAI_AGENT_NAME` points at the wrong managed agent name, or the agent no longer exists.
 
 **Solution:**
 1. Go to Azure Portal → Your AI Project → Agents
 2. Copy the correct Agent ID
 3. Update `.env`:
 ```env
-AZURE_OPENAI_AGENT_PROJECT_ID=correct-agent-id
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
 ```
 
 ---
@@ -137,7 +137,7 @@ Ask a chart question and check console:
 **✅ Success:**
 ```
 Code Agent decision: YES
-🤖 Using Code Agent (GPT-4.1 + Code Interpreter)
+🤖 Using Code Agent (GPT-5.4 + Code Interpreter + Meta-Agent fallback)
 ```
 
 **❌ Failure:**
@@ -166,8 +166,9 @@ If you need Code Agent working immediately:
 1. **Get your API key** from Azure Portal
 2. **Add to `.env`:**
 ```env
-AZURE_OPENAI_AGENT_API_KEY=your-api-key-here
-AZURE_OPENAI_AGENT_USE_MANAGED_IDENTITY=false
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
+CODE_AGENT_ENABLE_DYNAMIC_FALLBACK=true
 ```
 3. **Restart the UI:**
 ```bash
@@ -255,9 +256,9 @@ Your question "create a line chart" matches:
 3. **Check agent exists:** Verify agent in Azure AI Studio
 4. **Try minimal .env:**
 ```env
-AZURE_OPENAI_AGENT_ENDPOINT=https://xxx.openai.azure.com
-AZURE_OPENAI_AGENT_PROJECT_ID=agent-id-here
-AZURE_OPENAI_AGENT_API_KEY=key-here
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
 ```
 5. **Restart clean:**
 ```bash

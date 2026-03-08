@@ -46,6 +46,7 @@ FEATURES:
 import os
 import json
 import base64
+import re
 import shutil
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
@@ -207,11 +208,13 @@ async def safe_responses_api_call(client, **params):
         # Run synchronous API call in executor to avoid blocking
         # Note: client.responses.create() is synchronous, not async
         loop = asyncio.get_event_loop()
+
+        timeout_override = params.pop('timeout_seconds', None)
         
         # Get reasoning effort for timeout estimation
         reasoning_effort = params.get('reasoning', {}).get('effort', 'medium')
         timeout_map = {'low': 90, 'medium': 300, 'high': 900, 'maximum': 1800}  # seconds - maximum can take 30min
-        timeout = timeout_map.get(reasoning_effort, 1800)  # default to max for safety
+        timeout = timeout_override or timeout_map.get(reasoning_effort, 1800)  # default to max for safety
         
         print(f"   🔄 Making o3-pro API call (reasoning: {reasoning_effort}, timeout: {timeout}s)...")
         
@@ -3868,7 +3871,106 @@ class DiagramAnalysisOrchestratorPro:
             import random
             return [random.random() for _ in range(1536)]
     
-    async def ask_question_pro(self, question: str) -> Dict[str, Any]:
+    def _extract_partial_json_string(self, output_text: str, key: str) -> Optional[str]:
+        pattern = re.compile(rf'"{re.escape(key)}"\s*:\s*"')
+        match = pattern.search(output_text)
+        if not match:
+            return None
+
+        collected: List[str] = []
+        escaped = False
+        for char in output_text[match.end():]:
+            if escaped:
+                collected.append(char)
+                escaped = False
+                continue
+            if char == "\\":
+                escaped = True
+                continue
+            if char == '"':
+                break
+            collected.append(char)
+
+        value = "".join(collected).strip()
+        if not value:
+            return None
+        return bytes(value, "utf-8").decode("unicode_escape")
+
+    def _extract_partial_json_string_array(
+        self,
+        output_text: str,
+        key: str,
+        max_items: int = 3,
+    ) -> List[str]:
+        pattern = re.compile(rf'"{re.escape(key)}"\s*:\s*\[')
+        match = pattern.search(output_text)
+        if not match:
+            return []
+
+        items: List[str] = []
+        index = match.end()
+        text_length = len(output_text)
+        while index < text_length and len(items) < max_items:
+            quote_index = output_text.find('"', index)
+            if quote_index == -1:
+                break
+
+            index = quote_index + 1
+            collected: List[str] = []
+            escaped = False
+            while index < text_length:
+                char = output_text[index]
+                index += 1
+                if escaped:
+                    collected.append(char)
+                    escaped = False
+                    continue
+                if char == "\\":
+                    escaped = True
+                    continue
+                if char == '"':
+                    break
+                collected.append(char)
+
+            item = "".join(collected).strip()
+            if item:
+                items.append(bytes(item, "utf-8").decode("unicode_escape"))
+
+        return items
+
+    def _salvage_question_response(self, output_text: str) -> Dict[str, Any]:
+        answer = self._extract_partial_json_string(output_text, "answer")
+        reasoning_chain = self._extract_partial_json_string_array(output_text, "reasoning_chain")
+
+        confidence_match = re.search(r'"confidence"\s*:\s*([0-9]*\.?[0-9]+)', output_text)
+        confidence = float(confidence_match.group(1)) if confidence_match else 0.8
+
+        evidence_quotes = self._extract_partial_json_string_array(output_text, "quote", max_items=2)
+        evidence = [{"page": "N/A", "quote": quote} for quote in evidence_quotes]
+
+        cleaned_answer = answer or output_text.strip() or "No response generated from o3-pro"
+        if not reasoning_chain:
+            reasoning_chain = ["Analysis completed with o3-pro reasoning"]
+
+        return {
+            "answer": cleaned_answer,
+            "reasoning_chain": reasoning_chain,
+            "confidence": confidence,
+            "evidence": evidence,
+            "raw_output": output_text,
+            "error": "Response format parsing failed; recovered partial structured output."
+        }
+
+    async def ask_question_pro(
+        self,
+        question: str,
+        *,
+        max_chunks: int = 15,
+        max_context_chars: int = 12000,
+        max_output_tokens: int = 16000,
+        timeout_seconds: Optional[int] = None,
+        reasoning_effort: str = "high",
+    ) -> Dict[str, Any]:
         """Enhanced question answering with o3-pro reasoning"""
         has_remote_index = self.context_manager.search_client is not None
         has_local_chunks = bool(self.processed_chunks or self.context_manager.chunk_store)
@@ -3881,7 +3983,7 @@ class DiagramAnalysisOrchestratorPro:
         
         # Retrieve enhanced context
         relevant_chunks = self.context_manager.retrieve_relevant_context(
-            question, max_chunks=15  # Increased for o3-pro
+            question, max_chunks=max_chunks
         )
 
         if not relevant_chunks:
@@ -3912,6 +4014,61 @@ class DiagramAnalysisOrchestratorPro:
                 few_shot_block += f"Q: {past_q}\nA (summary): {past_a[:400]}\n---\n"
             few_shot_block += "\nNOW ANSWER THE NEW QUESTION BELOW with the same analytical rigour.\n"
         
+        compact_response = max_output_tokens <= 4000
+
+        if compact_response:
+            output_schema = """{
+    "answer": "concise expert answer",
+    "reasoning_chain": [
+        "Step 1: key interpretation",
+        "Step 2: technical validation",
+        "Step 3: final conclusion"
+    ],
+    "evidence": [
+        {
+            "page": 0,
+            "quote": "short relevant excerpt"
+        }
+    ],
+    "confidence": 0.95
+}"""
+            output_guidance = (
+                "Return compact JSON only. Keep the answer under 180 words, "
+                "reasoning_chain to at most 3 short items, and evidence to at most 2 short quotes."
+            )
+        else:
+            output_schema = """{
+    "answer": "comprehensive expert answer",
+    "reasoning_chain": [
+        "Step 1: Initial analysis and approach",
+        "Step 2: Technical evaluation and calculations", 
+        "Step 3: Standards and code review",
+        "Step 4: Integration and system-level considerations",
+        "Step 5: Validation and confidence assessment"
+    ],
+    "evidence": [
+        {
+            "chunk_id": "chunk_id",
+            "page": 0,
+            "quote": "relevant excerpt",
+            "location": "specific location description",
+            "technical_significance": "why this evidence matters"
+        }
+    ],
+    "technical_analysis": {
+        "specifications": {},
+        "standards_referenced": [],
+        "engineering_calculations": "if applicable",
+        "safety_considerations": "if relevant"
+    },
+    "confidence": 0.95,
+    "uncertainty_factors": ["factor1", "factor2"],
+    "recommendations": ["recommendation1", "recommendation2"],
+    "follow_up_questions": ["question1", "question2"],
+    "sources": ["chunk_1", "chunk_3"]
+}"""
+            output_guidance = "Return complete JSON only."
+
         prompt = f"""You are an expert engineering consultant with advanced reasoning capabilities, enhanced for o3-pro analysis.
 {few_shot_block}
 QUESTION: {question}
@@ -3946,39 +4103,11 @@ ENHANCED EXPERT RESPONSE FRAMEWORK with o3-pro REASONING:
    - Suggest additional information that would improve accuracy
 
 RELEVANT CONTEXT FROM ANALYZED DIAGRAMS:
-{context_text[:12000]}
+{context_text[:max_context_chars]}
 {ENGINEERING_CONSTRAINTS}
-OUTPUT: Enhanced JSON response with o3-pro reasoning:
-{{
-    "answer": "comprehensive expert answer",
-    "reasoning_chain": [
-        "Step 1: Initial analysis and approach",
-        "Step 2: Technical evaluation and calculations", 
-        "Step 3: Standards and code review",
-        "Step 4: Integration and system-level considerations",
-        "Step 5: Validation and confidence assessment"
-    ],
-    "evidence": [
-        {{
-            "chunk_id": "chunk_id",
-            "page": 0,
-            "quote": "relevant excerpt",
-            "location": "specific location description",
-            "technical_significance": "why this evidence matters"
-        }}
-    ],
-    "technical_analysis": {{
-        "specifications": {{}},
-        "standards_referenced": [],
-        "engineering_calculations": "if applicable",
-        "safety_considerations": "if relevant"
-    }},
-    "confidence": 0.95,
-    "uncertainty_factors": ["factor1", "factor2"],
-    "recommendations": ["recommendation1", "recommendation2"],
-    "follow_up_questions": ["question1", "question2"],
-    "sources": ["chunk_1", "chunk_3"]
-}}"""
+OUTPUT: Enhanced JSON response with o3-pro reasoning.
+{output_guidance}
+{output_schema}"""
 
         # Use Responses API with maximum reasoning effort
         input_data = [
@@ -3994,8 +4123,9 @@ OUTPUT: Enhanced JSON response with o3-pro reasoning:
             self.client,
             model=self.deployment_name,
             input=input_data,
-            reasoning={"effort": "high"},
-            max_output_tokens=16000
+            reasoning={"effort": reasoning_effort},
+            max_output_tokens=max_output_tokens,
+            timeout_seconds=timeout_seconds,
         )
         
         # Extract and parse response (handle o3-pro response structure)
@@ -4063,13 +4193,9 @@ OUTPUT: Enhanced JSON response with o3-pro reasoning:
             self.qa_history.append((question, output_text[:400]))
             if len(self.qa_history) > 10:
                 self.qa_history.pop(0)
-            return {
-                "answer": output_text if output_text else "No response generated from o3-pro",
-                "reasoning_chain": ["Analysis completed with o3-pro reasoning"],
-                "confidence": 0.8,
-                "raw_output": output_text,
-                "error": f"Response format parsing failed: {str(e)}"
-            }
+            fallback_result = self._salvage_question_response(output_text)
+            fallback_result["error"] = f"Response format parsing failed: {str(e)}"
+            return fallback_result
 
     async def ask_with_self_critique(self, question: str, domain: str = "general") -> Dict[str, Any]:
         """

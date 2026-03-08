@@ -15,7 +15,8 @@ azure-search-documents==11.6.0b4  # Azure AI Search SDK
 azure-ai-documentintelligence==1.0.2  # Azure Document Intelligence (advanced OCR & layout analysis)
 azure-storage-blob>=12.26.0  # Azure Blob Storage for cloud file input/output
 azure-identity>=1.15.0      # Azure authentication (for managed identity support)
-azure-ai-projects>=1.0.0  # Azure AI Agents with Code Interpreter (GPT-4.1)
+azure-ai-projects>=1.0.0  # Azure AI Agents with Code Interpreter (managed GPT-5.4 code agent)
+agent-framework-github-copilot  # Copilot-backed dynamic meta-agent fallback for agentic tasks
 pandas>=2.0.0               # Data manipulation for Code Agent (tables, exports)
 
 # Phase 3 Enhancements: Visualization & Reporting

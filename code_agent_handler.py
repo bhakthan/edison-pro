@@ -1,7 +1,7 @@
 """
 Author: Srikanth Bhakthan - Microsoft
 Code Agent Handler for EDISON PRO
-Uses Azure AI Agents with GPT-5, Code Interpreter, and Bing Search for data transformation
+Uses Azure AI Agents with GPT-5.4, Code Interpreter, and Copilot-backed meta-agent fallback for data transformation
 
 This module enables:
 - Converting engineering diagram data into tables, charts, and downloadable files
@@ -12,23 +12,41 @@ This module enables:
 """
 
 import os
+import asyncio
 import json
 import re
+import threading
 from typing import Dict, List, Any, Optional, Tuple
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
-from azure.ai.agents.models import ListSortOrder
+from azure.ai.projects.models import PromptAgentDefinition, CodeInterpreterTool
 import logging
 from dotenv import load_dotenv
 load_dotenv(override=True)
 logger = logging.getLogger(__name__)
 
+try:
+    from agents.dynamic_meta_agent import get_dynamic_registry
+    DYNAMIC_META_AGENT_AVAILABLE = True
+except Exception:
+    get_dynamic_registry = None
+    DYNAMIC_META_AGENT_AVAILABLE = False
+
 
 class CodeAgentHandler:
     """
-    Handles interaction with Azure AI Code Agent (GPT-5 with code interpreter)
-    for data transformation and analysis tasks.
+    Handles interaction with the managed EDISON code agent (GPT-5.4 with code interpreter)
+    and falls back to the Copilot-backed dynamic meta-agent for more agentic tasks.
     """
+
+    AGENTIC_KEYWORDS = {
+        'agentic', 'autonomous', 'delegate', 'delegation', 'workflow', 'orchestrate',
+        'orchestration', 'multi-step', 'multi step', 'plan and execute', 'investigate',
+        'research and compare', 'iterate', 'refine', 'specialist agent', 'meta-agent',
+        'meta agent', 'generate an agent', 'create an agent'
+    }
+
+    VALID_AGENT_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$')
     
     # Keywords that indicate code agent should be used
     DATA_TRANSFORMATION_KEYWORDS = {
@@ -57,16 +75,118 @@ class CodeAgentHandler:
             api_key: API key (from .env if not provided)
         """
         self.project_endpoint = project_endpoint or os.getenv("AZURE_OPENAI_AGENT_PROJECT_ENDPOINT")
-        self.agent_id = agent_id or os.getenv("AZURE_OPENAI_AGENT_ID")
+        raw_agent_name = (
+            agent_id
+            or os.getenv("AZURE_OPENAI_AGENT_NAME")
+            or os.getenv("AZURE_OPENAI_AGENT_ID")
+            or "edison-code-agent"
+        )
+        self.agent_name = self._normalize_agent_name(raw_agent_name)
         self.api_key = api_key or os.getenv("AZURE_OPENAI_AGENT_API_KEY")
+        self.agent_model = os.getenv("AZURE_OPENAI_AGENT_MODEL", "gpt-5.4")
+        self.enable_dynamic_fallback = os.getenv("CODE_AGENT_ENABLE_DYNAMIC_FALLBACK", "true").lower() not in {"0", "false", "no"}
         
         self.client = None
+        self.openai_client = None
         self.agent = None
         self.thread_id = None
         self.available = False
+        self.dynamic_registry = None
+
+        if self.enable_dynamic_fallback and DYNAMIC_META_AGENT_AVAILABLE and get_dynamic_registry is not None:
+            try:
+                self.dynamic_registry = get_dynamic_registry()
+            except Exception as exc:
+                logger.warning(f"Dynamic meta-agent registry unavailable: {exc}")
         
         # Try to initialize
         self._initialize()
+
+    def _default_agent_instructions(self) -> str:
+        return (
+            "You are EDISON PRO's code agent for engineering-diagram data work. "
+            "Use code interpreter to transform extracted engineering data into tables, charts, "
+            "counts, calculations, CSV/Excel outputs, and concise analytical summaries. "
+            "Prefer structured outputs, cite assumptions, and preserve engineering identifiers, ratings, and page references."
+        )
+
+    def _normalize_agent_name(self, candidate: Optional[str]) -> str:
+        candidate = (candidate or "edison-code-agent").strip()
+        if self.VALID_AGENT_NAME_PATTERN.match(candidate):
+            return candidate
+
+        normalized = re.sub(r'[^a-zA-Z0-9-]+', '-', candidate).strip('-').lower()
+        normalized = re.sub(r'-{2,}', '-', normalized)
+        if len(normalized) > 63:
+            normalized = normalized[:63].rstrip('-')
+        if not normalized or not self.VALID_AGENT_NAME_PATTERN.match(normalized):
+            normalized = "edison-code-agent"
+
+        logger.warning(
+            f"Configured agent identifier '{candidate}' is not a valid Foundry agent name; using managed agent name '{normalized}' instead."
+        )
+        return normalized
+
+    def _has_dynamic_fallback(self) -> bool:
+        return self.dynamic_registry is not None
+
+    def _requires_agentic_approach(self, question: str) -> bool:
+        question_lower = question.lower()
+        return any(keyword in question_lower for keyword in self.AGENTIC_KEYWORDS)
+
+    def _ensure_project_agent(self):
+        definition = PromptAgentDefinition(
+            model=self.agent_model,
+            instructions=self._default_agent_instructions(),
+            tools=[CodeInterpreterTool()],
+        )
+        description = "EDISON PRO managed code agent for structured data transformation and analysis."
+        metadata = {
+            "managed_by": "edison-pro",
+            "runtime": "azure-ai-projects",
+            "model": self.agent_model,
+        }
+
+        try:
+            existing = self.client.agents.get(self.agent_name)
+            logger.info(f"Found configured code agent '{self.agent_name}', syncing definition to model {self.agent_model}.")
+            return self.client.agents.update(
+                self.agent_name,
+                definition=definition,
+                description=description,
+                metadata=metadata,
+            )
+        except Exception:
+            logger.info(f"Creating managed code agent '{self.agent_name}' with model {self.agent_model}.")
+            return self.client.agents.create(
+                name=self.agent_name,
+                definition=definition,
+                description=description,
+                metadata=metadata,
+            )
+
+    def _run_coro_sync(self, coro):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+
+        result_box: Dict[str, Any] = {}
+        error_box: Dict[str, BaseException] = {}
+
+        def runner() -> None:
+            try:
+                result_box["value"] = asyncio.run(coro)
+            except BaseException as exc:
+                error_box["error"] = exc
+
+        thread = threading.Thread(target=runner, daemon=True)
+        thread.start()
+        thread.join()
+
+        if "error" in error_box:
+            raise error_box["error"]
+        return result_box.get("value")
     
     def _initialize(self) -> bool:
         """
@@ -82,10 +202,13 @@ class CodeAgentHandler:
         4. Environment variables: Set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
         """
         try:
-            # Check if we have minimum required credentials
-            if not self.project_endpoint or not self.agent_id:
+            if not self.project_endpoint:
+                if self._has_dynamic_fallback():
+                    logger.warning("Azure AI Projects endpoint not configured; using dynamic Copilot meta-agent fallback for code-agent tasks.")
+                    self.available = True
+                    return True
                 logger.warning("Code Agent credentials not configured in .env - feature disabled")
-                logger.info("Required: AZURE_OPENAI_AGENT_PROJECT_ENDPOINT, AZURE_OPENAI_AGENT_ID")
+                logger.info("Required: AZURE_OPENAI_AGENT_PROJECT_ENDPOINT")
                 return False
             
             # Azure AI Projects SDK requires TokenCredential (not API key)
@@ -106,10 +229,15 @@ class CodeAgentHandler:
                 credential=credential,
                 endpoint=self.project_endpoint
             )
-            
-            # Get the agent (now using GPT-5 with Code Interpreter)
-            self.agent = self.client.agents.get_agent(self.agent_id)
-            logger.info(f"✅ Code Agent initialized: {self.agent.name if hasattr(self.agent, 'name') else self.agent_id} (GPT-5)")
+
+            self.openai_client = self.client.get_openai_client()
+            self.agent = self._ensure_project_agent()
+            logger.info(
+                f"✅ Code Agent initialized: {self.agent.name if hasattr(self.agent, 'name') else self.agent_name} ({self.agent_model})"
+            )
+
+            if self._has_dynamic_fallback():
+                logger.info("✅ Dynamic Copilot meta-agent fallback available for agentic code-agent requests")
             
             self.available = True
             return True
@@ -127,24 +255,31 @@ class CodeAgentHandler:
             logger.info("")
             logger.info("   Required .env variables:")
             logger.info("   - AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}")
-            logger.info("   - AZURE_OPENAI_AGENT_ID=your-agent-id")
+            logger.info("   - AZURE_OPENAI_AGENT_NAME=edison-code-agent  # preferred")
+            logger.info(f"   - AZURE_OPENAI_AGENT_MODEL={self.agent_model}")
             logger.info("")
+            if self._has_dynamic_fallback():
+                logger.info("   Falling back to the dynamic Copilot meta-agent runtime for code-agent tasks.")
+                self.available = True
+                return True
             self.available = False
             return False
     
     def create_thread(self) -> Optional[str]:
         """
-        Create a new conversation thread.
+        Create or reuse a conversation for the managed code agent.
         
         Returns:
             Thread ID if successful, None otherwise
         """
-        if not self.available:
+        if not self.available or not self.openai_client:
             return None
             
         try:
-            thread = self.client.agents.threads.create()
-            self.thread_id = thread.id
+            if self.thread_id:
+                return self.thread_id
+            conversation = self.openai_client.conversations.create(items=[])
+            self.thread_id = conversation.id
             logger.info(f"Created code agent thread: {self.thread_id}")
             return self.thread_id
         except Exception as e:
@@ -161,10 +296,14 @@ class CodeAgentHandler:
         Returns:
             True if code agent should handle it, False otherwise
         """
-        if not self.available:
+        if not self.available and not self._has_dynamic_fallback():
             return False
         
         question_lower = question.lower()
+
+        if self._requires_agentic_approach(question):
+            logger.info("Code agent triggered by agentic-request keyword")
+            return True
         
         # Check for data transformation keywords
         for keyword in self.DATA_TRANSFORMATION_KEYWORDS:
@@ -216,116 +355,310 @@ class CodeAgentHandler:
                 - charts: List of chart images generated
                 - error: Error message if failed
         """
-        if not self.available:
+        if not self.available and not self._has_dynamic_fallback():
             return {
                 'answer': 'Code Agent is not available. Please configure AZURE_OPENAI_AGENT_* variables in .env',
                 'code_executed': False,
                 'error': 'Code Agent not configured'
             }
+
+        if self._requires_agentic_approach(question):
+            fallback_result = self._run_dynamic_meta_agent(
+                question=question,
+                context_data=context_data,
+                conversation_history=conversation_history,
+                enable_web_search=enable_web_search,
+                reason="agentic request"
+            )
+            if fallback_result:
+                return fallback_result
         
         try:
-            # Create thread if needed
-            if not self.thread_id:
-                self.create_thread()
-            
-            if not self.thread_id:
-                return {
-                    'answer': 'Failed to create conversation thread',
-                    'code_executed': False,
-                    'error': 'Thread creation failed'
-                }
-            
-            # Prepare context message with structured data
-            context_message = self._prepare_context_message(context_data)
-            
-            # Add conversation history if provided
-            if conversation_history:
-                history_text = "\n\n**Previous Conversation:**\n"
-                for msg in conversation_history[-3:]:  # Last 3 messages for context
-                    # Handle both tuple format (user, assistant) and dict format
-                    if isinstance(msg, tuple) and len(msg) == 2:
-                        user_msg, assistant_msg = msg
-                        if user_msg:
-                            history_text += f"user: {str(user_msg)[:200]}...\n"
-                        if assistant_msg:
-                            history_text += f"assistant: {str(assistant_msg)[:200]}...\n"
-                    elif isinstance(msg, dict):
-                        history_text += f"{msg['role']}: {msg['content'][:200]}...\n"
-                context_message = history_text + "\n\n" + context_message
-            
-            # Send context and question
-            web_search_note = "\n\n**Web Search Enabled:** You can use Bing Search to find additional context, standards, or technical information if needed." if enable_web_search else ""
-            full_message = f"{context_message}\n\n**User Question:** {question}{web_search_note}"
-            
-            message = self.client.agents.messages.create(
-                thread_id=self.thread_id,
-                role="user",
-                content=full_message
-            )
-            
-            # Configure tools based on web_search setting
-            tool_resources = None
-            connection_id = os.getenv("BING_CONNECTION_ID", "")
-            
-            if enable_web_search and connection_id:
-                # Enable Bing Search tool for this run
-                # Note: Requires Bing Search tool to be configured in the agent
-                tool_resources = {"bing_grounding": {"connection_id": connection_id}}
-                logger.info("Running code agent with Bing Search enabled")
-            
-            # Run the agent
-            logger.info(f"Running code agent on thread {self.thread_id} (GPT-5 + Code Interpreter{' + Bing Search' if tool_resources else ''})")
-            
-            # Note: tool_resources parameter is used only if web search is enabled AND connection ID is valid
-            if tool_resources:
-                run = self.client.agents.runs.create_and_process(
-                    thread_id=self.thread_id,
-                    agent_id=self.agent.id,
-                    tool_resources=tool_resources
+            if self.openai_client and self.agent:
+                result = self._run_project_code_agent(
+                    question=question,
+                    context_data=context_data,
+                    conversation_history=conversation_history,
+                    enable_web_search=enable_web_search,
                 )
-            else:
-                run = self.client.agents.runs.create_and_process(
-                    thread_id=self.thread_id,
-                    agent_id=self.agent.id
+                logger.info(
+                    f"Code agent completed. Generated {len(result.get('tables', []))} tables, "
+                    f"{len(result.get('files', []))} files, {len(result.get('charts', []))} charts"
                 )
-            
-            # Check run status
-            if run.status == "failed":
-                error_msg = run.last_error if hasattr(run, 'last_error') else "Unknown error"
-                logger.error(f"Code agent run failed: {error_msg}")
-                return {
-                    'answer': f'Code execution failed: {error_msg}',
-                    'code_executed': True,
-                    'error': str(error_msg)
-                }
-            
-            # Get messages
-            messages = self.client.agents.messages.list(
-                thread_id=self.thread_id,
-                order=ListSortOrder.ASCENDING
+                return result
+
+            fallback_result = self._run_dynamic_meta_agent(
+                question=question,
+                context_data=context_data,
+                conversation_history=conversation_history,
+                enable_web_search=enable_web_search,
+                reason="Azure AI Projects agent unavailable"
             )
-            
-            # Get run steps to extract file outputs from code interpreter
-            run_steps = self.client.agents.run_steps.list(
-                thread_id=self.thread_id,
-                run_id=run.id
-            )
-            
-            # Extract results
-            result = self._extract_results(messages, run, run_steps)
-            
-            logger.info(f"Code agent completed. Generated {len(result.get('tables', []))} tables, "
-                       f"{len(result.get('files', []))} files, {len(result.get('charts', []))} charts")
-            
-            return result
+            if fallback_result:
+                return fallback_result
+
+            return {
+                'answer': 'Code Agent is not available. Please configure AZURE_OPENAI_AGENT_* variables in .env',
+                'code_executed': False,
+                'error': 'Code Agent not configured'
+            }
             
         except Exception as e:
             logger.error(f"Code agent error: {e}", exc_info=True)
+            fallback_result = self._run_dynamic_meta_agent(
+                question=question,
+                context_data=context_data,
+                conversation_history=conversation_history,
+                enable_web_search=enable_web_search,
+                reason=f"Azure AI Projects execution error: {e}"
+            )
+            if fallback_result:
+                return fallback_result
             return {
                 'answer': f'An error occurred: {str(e)}',
                 'code_executed': False,
                 'error': str(e)
             }
+
+    def _build_full_message(
+        self,
+        question: str,
+        context_data: Dict[str, Any],
+        conversation_history: Optional[List],
+        enable_web_search: bool,
+    ) -> str:
+        context_message = self._prepare_context_message(context_data)
+
+        if conversation_history:
+            history_text = "\n\n**Previous Conversation:**\n"
+            for msg in conversation_history[-3:]:
+                if isinstance(msg, tuple) and len(msg) == 2:
+                    user_msg, assistant_msg = msg
+                    if user_msg:
+                        history_text += f"user: {str(user_msg)[:200]}...\n"
+                    if assistant_msg:
+                        history_text += f"assistant: {str(assistant_msg)[:200]}...\n"
+                elif isinstance(msg, dict):
+                    history_text += f"{msg['role']}: {msg['content'][:200]}...\n"
+            context_message = history_text + "\n\n" + context_message
+
+        web_search_note = "\n\n**Web Search Preference:** The user requested web-grounded reasoning; if you do not have direct web access, say so and proceed with the available engineering context." if enable_web_search else ""
+        return f"{context_message}\n\n**User Question:** {question}{web_search_note}"
+
+    def _run_project_code_agent(
+        self,
+        question: str,
+        context_data: Dict[str, Any],
+        conversation_history: Optional[List],
+        enable_web_search: bool,
+    ) -> Dict[str, Any]:
+        if not self.openai_client or not self.agent:
+            raise RuntimeError("Azure AI Projects code agent is not initialized")
+
+        full_message = self._build_full_message(question, context_data, conversation_history, enable_web_search)
+        conversation_id = self.create_thread()
+        if not conversation_id:
+            raise RuntimeError("Failed to create conversation thread")
+
+        self.openai_client.conversations.items.create(
+            conversation_id=conversation_id,
+            items=[{"type": "message", "role": "user", "content": full_message}],
+        )
+
+        logger.info(f"Running code agent on conversation {conversation_id} ({self.agent_model} + Code Interpreter)")
+        response = self.openai_client.responses.create(
+            conversation=conversation_id,
+            extra_body={
+                "agent_reference": {
+                    "name": getattr(self.agent, "name", self.agent_name),
+                    "type": "agent_reference",
+                }
+            },
+            max_output_tokens=4000,
+            truncation="auto",
+        )
+
+        result = self._extract_project_response_result(response)
+        result["analysis_status"] = f"Azure AI Projects Code Agent ({self.agent_model})"
+        return result
+
+    def _extract_file_ids_recursive(self, node: Any) -> List[str]:
+        file_ids: List[str] = []
+        visited: set[int] = set()
+
+        def walk(value: Any) -> None:
+            identifier = id(value)
+            if identifier in visited:
+                return
+            visited.add(identifier)
+
+            if value is None:
+                return
+            if isinstance(value, dict):
+                for key, inner in value.items():
+                    if key in {"file_id", "container_file_id"} and isinstance(inner, str):
+                        file_ids.append(inner)
+                    else:
+                        walk(inner)
+                return
+            if isinstance(value, (list, tuple, set)):
+                for inner in value:
+                    walk(inner)
+                return
+            if hasattr(value, "file_id") and isinstance(getattr(value, "file_id"), str):
+                file_ids.append(getattr(value, "file_id"))
+            if hasattr(value, "container_file_id") and isinstance(getattr(value, "container_file_id"), str):
+                file_ids.append(getattr(value, "container_file_id"))
+            if hasattr(value, "__dict__"):
+                walk(vars(value))
+
+        walk(node)
+        return list(dict.fromkeys(file_ids))
+
+    def _extract_project_response_result(self, response: Any) -> Dict[str, Any]:
+        result = {
+            'answer': getattr(response, 'output_text', '') or '',
+            'code_executed': False,
+            'tables': [],
+            'files': [],
+            'charts': [],
+            'raw_messages': []
+        }
+
+        if hasattr(response, 'output') and response.output:
+            text_parts: List[str] = []
+            file_ids: List[str] = []
+            for item in response.output:
+                item_type = getattr(item, 'type', '')
+                if 'code_interpreter' in item_type:
+                    result['code_executed'] = True
+                if item_type == 'message' and hasattr(item, 'content'):
+                    for content_item in item.content:
+                        text_attr = getattr(content_item, 'text', None)
+                        if isinstance(text_attr, str):
+                            text_parts.append(text_attr)
+                        elif hasattr(text_attr, 'value') and text_attr.value:
+                            text_parts.append(text_attr.value)
+                        elif hasattr(content_item, 'value') and content_item.value:
+                            text_parts.append(content_item.value)
+                        file_ids.extend(self._extract_file_ids_recursive(content_item))
+                file_ids.extend(self._extract_file_ids_recursive(item))
+
+            if text_parts and not result['answer']:
+                result['answer'] = "\n\n".join(part for part in text_parts if part).strip()
+            result['raw_messages'] = [result['answer']] if result['answer'] else []
+            result['files'] = list(dict.fromkeys(file_ids))
+
+        if result['files']:
+            out_folder = os.path.abspath('out')
+            os.makedirs(out_folder, exist_ok=True)
+            downloaded_files = []
+            for file_id in result['files']:
+                file_name = f"code_agent_output_{file_id[:8]}.bin"
+                output_path = os.path.join(out_folder, file_name)
+                if self.download_file(file_id, output_path):
+                    downloaded_files.append(output_path)
+            result['files'] = downloaded_files
+
+        if '|' in result['answer'] and result['answer'].count('|') > 5:
+            result['tables'].append({
+                'type': 'markdown',
+                'content': result['answer']
+            })
+
+        if '<div' in result['answer'] and ('plotly' in result['answer'].lower() or 'class="plotly-graph-div"' in result['answer']):
+            plotly_pattern = r'(<(?:html|div)[^>]*>.*?</(?:html|div)>)'
+            matches = re.findall(plotly_pattern, result['answer'], re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                if 'plotly' in match.lower():
+                    result['charts'].append({
+                        'type': 'plotly',
+                        'html': match
+                    })
+
+        return result
+
+    def _prepare_dynamic_agent_prompt(
+        self,
+        question: str,
+        context_data: Dict[str, Any],
+        conversation_history: Optional[List],
+        enable_web_search: bool,
+    ) -> str:
+        full_message = self._build_full_message(question, context_data, conversation_history, enable_web_search)
+        return (
+            "You are the Copilot-backed agentic fallback for EDISON PRO's code agent. "
+            "Work like a specialist agent: break the task into steps mentally, but return only the final answer. "
+            "If the user requests a table, return a markdown table. If they request calculations, show the formula and result.\n\n"
+            f"{full_message}"
+        )
+
+    def _run_dynamic_meta_agent(
+        self,
+        question: str,
+        context_data: Dict[str, Any],
+        conversation_history: Optional[List],
+        enable_web_search: bool,
+        reason: str,
+    ) -> Optional[Dict[str, Any]]:
+        if not self._has_dynamic_fallback():
+            return None
+
+        try:
+            task = f"Engineering data transformation and agentic analysis for: {question}"
+            ensure_result = self._run_coro_sync(
+                self.dynamic_registry.ensure_agent_for_task(
+                    task=task,
+                    context={
+                        "reason": reason,
+                        "question": question,
+                        "enable_web_search": enable_web_search,
+                        "mode": "code-agent-fallback",
+                    },
+                    allow_create=True,
+                )
+            )
+            agent_payload = ensure_result.get("agent") or {}
+            agent_id = agent_payload.get("agent_id")
+            if not agent_id:
+                return None
+
+            run_result = self._run_coro_sync(
+                self.dynamic_registry.run_agent(
+                    agent_id=agent_id,
+                    prompt=self._prepare_dynamic_agent_prompt(
+                        question,
+                        context_data,
+                        conversation_history,
+                        enable_web_search,
+                    ),
+                    task=task,
+                    auto_refine=False,
+                    max_refinement_rounds=0,
+                )
+            )
+
+            answer = run_result.get("answer", "")
+            result = {
+                'answer': answer or 'Dynamic meta-agent did not return an answer.',
+                'code_executed': False,
+                'tables': [],
+                'files': [],
+                'charts': [],
+                'analysis_status': f"Copilot Meta-Agent fallback ({run_result.get('agent_name', agent_id)})",
+                'agent_id': agent_id,
+            }
+
+            if '|' in result['answer'] and result['answer'].count('|') > 5:
+                result['tables'].append({
+                    'type': 'markdown',
+                    'content': result['answer']
+                })
+
+            return result
+        except BaseException as exc:
+            logger.error(f"Dynamic meta-agent fallback failed: {exc}", exc_info=True)
+            return None
     
     def _prepare_context_message(self, context_data: Dict[str, Any]) -> str:
         """
@@ -546,31 +879,22 @@ class CodeAgentHandler:
         Returns:
             True if successful, False otherwise
         """
-        if not self.available:
+        if not self.available or not self.openai_client:
             return False
         
         try:
             logger.info(f"[DEBUG] download_file called for {file_id} -> {output_path}")
             
-            # Always use manual download to ensure correct path
-            # The .save() method doesn't respect absolute paths correctly
-            file_content_stream = self.client.agents.files.get_content(file_id)
-            logger.info(f"[DEBUG] Got file_content_stream for {file_id}")
-            
-            # Collect all chunks from the generator
-            chunks = []
-            for chunk in file_content_stream:
-                logger.info(f"[DEBUG] Got chunk of size {len(chunk)} for {file_id}")
-                if isinstance(chunk, (bytes, bytearray)):
-                    chunks.append(chunk)
-            
-            # Write collected content to file using absolute path
+            file_content = self.openai_client.files.content(file_id)
+            logger.info(f"[DEBUG] Got file content handle for {file_id}")
+
+            payload = file_content.read() if hasattr(file_content, 'read') else bytes(file_content)
+
             with open(output_path, 'wb') as f:
-                for chunk in chunks:
-                    f.write(chunk)
-            
-            logger.info(f"[DEBUG] Wrote file {output_path} with {len(chunks)} chunks")
-            logger.info(f"[DEBUG] File size: {sum(len(c) for c in chunks)} bytes")
+                f.write(payload)
+
+            logger.info(f"[DEBUG] Wrote file {output_path}")
+            logger.info(f"[DEBUG] File size: {len(payload)} bytes")
             
             # Verify file was created
             import os

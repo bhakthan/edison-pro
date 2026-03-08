@@ -193,7 +193,7 @@ class EdisonProUI:
             
             if use_code_agent:
                 # Step 2a: Use Code Agent for data transformation
-                print("   🤖 Using Code Agent (GPT-4.1 + Code Interpreter)")
+                print("   🤖 Using Code Agent (GPT-5.4 + Code Interpreter + Meta-Agent fallback)")
                 
                 # Get context data for code agent
                 context_data = self._prepare_code_agent_context()
@@ -236,7 +236,14 @@ class EdisonProUI:
                 print("   🧠 Using o3-pro (Deep Reasoning)")
                 print(f"   Azure Search available: {self.orchestrator.context_manager.search_client is not None}")
                 
-                result = await self.orchestrator.ask_question_pro(question)
+                result = await self.orchestrator.ask_question_pro(
+                    question,
+                    max_chunks=8,
+                    max_context_chars=6000,
+                    max_output_tokens=2500,
+                    timeout_seconds=180,
+                    reasoning_effort="high",
+                )
                 print(f"   ✓ Got result from o3-pro")
                 
                 # Format response
@@ -272,6 +279,14 @@ class EdisonProUI:
                     response_parts.append("\n\n💡 **Tip:** Try asking for a table, chart, or CSV export for better visualization!")
 
                 return ("\n".join(response_parts), "", "", "")
+
+        except asyncio.TimeoutError:
+            timeout_msg = (
+                "⏱️ The model did not respond within the Gradio UI timeout window. "
+                "Try a narrower question, reduce the amount of indexed content, or use the CLI for long-form analysis."
+            )
+            print(f"❌ UI timeout while processing question: {question}")
+            return (timeout_msg, "", "", "")
             
         except Exception as e:
             import traceback
@@ -299,7 +314,7 @@ class EdisonProUI:
 ### 📊 System Status
 
 - **Model:** {self.orchestrator.deployment_name}
-- **Reasoning Effort:** LOW
+- **Reasoning Effort:** HIGH
 - **Azure Search:** {"✅ Connected" if has_azure_search else "❌ Not configured"}
 - **Local Chunks:** {total_chunks}
 - **Staged (pending):** {staged_docs}
@@ -1635,7 +1650,7 @@ def create_ui():
                             code_agent_status = "✅ Available" if app.code_agent and app.code_agent.available else "⚠️ Not configured"
                             gr.Markdown(f"""
                             ---
-                            ### 🤖 Code Agent (GPT-4.1)
+                            ### 🤖 Code Agent (GPT-5.4)
                             
                             **Status:** {code_agent_status}
                             

@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-EDISON PRO now integrates **Azure AI Agents with GPT-4.1 and Code Interpreter** to transform extracted engineering diagram data into actionable formats: tables, charts, calculations, and downloadable files.
+EDISON PRO now integrates a **managed Azure AI Projects code agent on GPT-5.4 with Code Interpreter**, plus a Copilot meta-agent fallback for explicitly agentic workflows.
 
 ## 🚀 Key Capabilities
 
@@ -47,7 +47,7 @@ User Question
     ↓
 Question Classifier
     ↓
-    ├─→ [Data Transformation?] → Code Agent (GPT-4.1 + Code Interpreter)
+   ├─→ [Data Transformation?] → Code Agent (GPT-5.4 + Code Interpreter)
     │                              ↓
     │                          • Parse JSON data
     │                          • Execute Python code
@@ -257,18 +257,19 @@ plt.savefig('voltage_dist.png')
 ### Environment Variables (.env)
 
 ```env
-# Azure AI Agent Configuration (GPT-4.1 with Code Interpreter)
+# Azure AI Agent Configuration (managed GPT-5.4 code agent)
 AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://your-project.services.ai.azure.com/api/projects/your-project
-AZURE_OPENAI_AGENT_ID=asst_Hn66VpWA6euz7IsV5GFnOa4P
-AZURE_OPENAI_AGENT_API_KEY=your-api-key
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
+CODE_AGENT_ENABLE_DYNAMIC_FALLBACK=true
 ```
 
 ### Setup Steps
 
-1. **Create Azure AI Agent** (already created with ID: `asst_Hn66VpWA6euz7IsV5GFnOa4P`)
-   - Model: GPT-4.1
+1. **Create or allow EDISON to create the managed Azure AI Agent**
+   - Model: GPT-5.4
    - Tools: Code Interpreter enabled
-   - Name: "EDISON Code Agent"
+   - Name: `edison-code-agent`
 
 2. **Configure Environment**
    - Add agent credentials to `.env`

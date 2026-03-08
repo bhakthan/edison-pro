@@ -31,7 +31,7 @@ EDISON PRO is a sophisticated multi-agent system that analyzes engineering diagr
 - **⚡ Intelligent Timeout Management**: Dynamic timeouts based on reasoning effort (90s-1800s)
 - **🛡️ Robust Error Handling**: Graceful fallbacks with comprehensive logging
 - **🧬 Advanced Prompting Engine (NEW)**: Six production-grade prompting techniques — negative constraints, few-shot history injection, self-critique loops, rolling conversation summarization, semantic reranking, and expert panel guardrails
-- **🤖 Hybrid Agent System (NEW)**: Intelligent routing between gpt-5-pro (understanding) and GPT-4.1 Code Agent (data transformation)
+- **🤖 Hybrid Agent System (NEW)**: Intelligent routing between gpt-5-pro (understanding) and a GPT-5.4 Code Agent, with Copilot meta-agent fallback for agentic workflows
 - **📊 Data Transformation**: Automatic table generation, calculations, CSV exports, and chart creation
 - **💡 Smart Detection**: Keywords and pattern matching to route questions to appropriate AI agent
 - **💰 Cost Optimization**: 90% cost reduction by routing understanding questions to gpt-5-pro vs. code agent
@@ -198,7 +198,7 @@ EDISON PRO now features a **hybrid agent system** that intelligently routes ques
   - Cost: ~$0.001 per query
   - Use: "Why is this rated at 100A?", "What standard applies?", "Explain the safety interlock"
   
-- **Code Agent (GPT-5 + Code Interpreter + Bing Search)** → Data transformation, tables, calculations, exports, web research
+- **Code Agent (GPT-5.4 + Code Interpreter + Copilot meta-agent fallback)** → Data transformation, tables, calculations, exports, and agentic multi-step workflows
   - Cost: ~$0.01-0.02 per query
   - Use: "Show all transformers as table", "Calculate total load", "Export to CSV", "Search web for voltage standards"
 
@@ -239,7 +239,8 @@ Use the current Azure AI Projects variable names when enabling the code agent:
 
 ```bash
 AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
-AZURE_OPENAI_AGENT_ID={your-agent-id}
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
 AZURE_TENANT_ID={your-tenant-id}
 # Optional service principal auth
 # AZURE_CLIENT_ID={your-client-id}
@@ -475,7 +476,7 @@ pip install -r requirements.txt
 - **Azure AI Search** resource for hybrid vector+keyword search
 - **Azure Document Intelligence** (Form Recognizer) for advanced OCR and layout analysis
 - **Azure Blob Storage** (optional) for cloud-based file input/output
-- **Azure AI Projects** (optional) for Code Agent with GPT-4.1 + Code Interpreter
+- **Azure AI Projects** (optional) for a managed GPT-5.4 Code Agent with Code Interpreter
 - Recommended: gpt-5-pro with enhanced reasoning capabilities
 
 ## ⚙️ Setup
@@ -517,10 +518,11 @@ AZURE_STORAGE_INPUT_CONTAINER=engineering-diagrams
 AZURE_STORAGE_OUTPUT_CONTAINER=edison-analysis-results
 
 # Code Agent Configuration (Optional - for data transformation features)
-# Azure AI Projects with GPT-5 + Code Interpreter + Bing Search
-AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
-AZURE_OPENAI_AGENT_PROJECT_ID=your-project-id
-AZURE_OPENAI_AGENT_API_KEY=your-api-key
+# Azure AI Projects with a managed GPT-5.4 code agent
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
+CODE_AGENT_ENABLE_DYNAMIC_FALLBACK=true
 
 # OR use Managed Identity for Code Agent (recommended for production):
 # AZURE_OPENAI_AGENT_USE_MANAGED_IDENTITY=true
@@ -1305,7 +1307,7 @@ flowchart LR
         
       AnswerAgent["<b>gpt-5-pro Handler</b><br/>────────────<br/>• Configurable reasoning<br/>• Dynamic timeout<br/>• Reasoning chain<br/>• Evidence extraction"]
         
-        CodeAgent["<b>Code Agent</b><br/>(GPT-4.1)<br/>────────────<br/>• Python execution<br/>• Tables/Charts<br/>• CSV/Excel export<br/>• Calculations"]
+      CodeAgent["<b>Code Agent</b><br/>(GPT-5.4)<br/>────────────<br/>• Python execution<br/>• Tables/Charts<br/>• CSV/Excel export<br/>• Agentic fallback"]
         
         FlickeringSystem["<b>Flickering System</b><br/>────────────<br/>• 6-agent architecture<br/>• Reality vs Memory<br/>• Theta oscillation (8Hz)<br/>• 50-200 cycles<br/>• Mismatch detection"]
         
@@ -2330,13 +2332,13 @@ This project uses Azure OpenAI services. Ensure you comply with:
 - 🧾 **Raw Output Fallback**: Displays raw model response when JSON parsing fails
 - 🧠 **Engineering Prompt Shortcuts**: Clickable sample questions for fast queries
 - 🎨 **Refined Interface**: Gradient engineering header, status panel, updated avatars
-- 🤖 **Hybrid Agent System (NEW)**: Intelligent routing between gpt-5-pro and GPT-4.1 Code Agent for data transformation
+- 🤖 **Hybrid Agent System (NEW)**: Intelligent routing between gpt-5-pro and a GPT-5.4 Code Agent for data transformation
 - 📊 **Data Transformation (NEW)**: Automatic table generation, calculations, CSV exports, and chart creation
 - 💡 **Smart Detection (NEW)**: Keywords and pattern matching route questions to appropriate agent
 - 💰 **Cost Optimization (NEW)**: 90% savings by routing understanding questions to gpt-5-pro vs. code agent
 
 ### Code Agent Integration (Phase 1 & 2 - October 2025)
-- 🤖 **Hybrid Agent Architecture**: Intelligent routing between gpt-5-pro (understanding) and GPT-4.1 Code Agent (data transformation)
+- 🤖 **Hybrid Agent Architecture**: Intelligent routing between gpt-5-pro (understanding) and a GPT-5.4 Code Agent (data transformation)
 - 🎯 **Smart Detection**: 45 keywords + 8 regex patterns automatically detect data transformation questions
 - 📊 **Multi-Format Output**: HTML tables, CSV/Excel exports, matplotlib charts with download buttons
 - 💡 **Context-Aware**: Passes structured interpretations from gpt-5-pro to code agent for accurate transformations

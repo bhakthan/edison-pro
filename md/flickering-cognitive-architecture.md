@@ -1197,7 +1197,7 @@ where:
 ### 5. Cost Efficiency (API Usage Optimization)
 
 **Problem:**
-- Every diagram analysis calls expensive LLM APIs (o3-pro, GPT-4.1)
+- Every diagram analysis calls expensive LLM APIs (o3-pro, GPT-5.4 code agent)
 - Average cost: $2-5 per complex diagram analysis
 - Volume: 10,000 diagrams/month → $20K-50K/month API costs
 

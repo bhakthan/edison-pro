@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Code Agent uses GPT-4.1 with Code Interpreter to transform engineering diagram data into tables, charts, calculations, and exports. This document shows the complete prompt structure sent to the agent.
+The Code Agent uses GPT-5.4 with Code Interpreter to transform engineering diagram data into tables, charts, calculations, and exports. For explicitly agentic requests, EDISON can fall through to the Copilot-backed dynamic meta-agent runtime.
 
 ---
 

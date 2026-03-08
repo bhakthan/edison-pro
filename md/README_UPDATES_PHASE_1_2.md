@@ -18,7 +18,7 @@ Updated README.md to document the newly implemented Code Agent integration (Phas
 
 #### 🧠 Agent Selection
 - o3-pro (LOW reasoning) for understanding questions (~$0.001/query)
-- Code Agent (GPT-4.1 + Code Interpreter) for data transformation (~$0.01-0.02/query)
+- Code Agent (GPT-5.4 + Code Interpreter) for data transformation (~$0.01-0.02/query)
 
 #### 🎯 Smart Routing
 - 13 keywords: table, csv, chart, calculate, filter, export, bom, list all, show all, compute, sum, total, group
@@ -53,14 +53,15 @@ Updated README.md to document the newly implemented Code Agent integration (Phas
 - `pandas`: Data manipulation and table generation
 
 **Added Azure service:**
-- Azure AI Projects (optional) for Code Agent with GPT-4.1 + Code Interpreter
+- Azure AI Projects (optional) for a managed GPT-5.4 Code Agent with Code Interpreter
 
 ### 4. Configuration Section (Lines 144-153)
 **Added .env variables:**
 ```env
 # Code Agent Configuration (Optional)
-AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
-AZURE_OPENAI_AGENT_PROJECT_ID=your-project-id
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
 AZURE_OPENAI_AGENT_API_KEY=your-api-key
 
 # OR use Managed Identity
@@ -126,7 +127,7 @@ All sections now reference the complete documentation suite:
 5. **Easy setup**: Add Azure AI Projects credentials to .env
 
 ### For Developers
-1. **Clear architecture**: o3-pro for reasoning, GPT-4.1 for data transformation
+1. **Clear architecture**: o3-pro for reasoning, GPT-5.4 for data transformation, with Copilot meta-agent fallback for explicitly agentic tasks
 2. **Detection logic**: 13 keywords + 8 regex patterns
 3. **Multi-format output**: HTML tables, CSV/Excel files, matplotlib charts
 4. **Graceful fallback**: Feature flag system (HAS_CODE_AGENT)

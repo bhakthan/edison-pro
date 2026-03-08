@@ -99,6 +99,12 @@ except Exception:
     PatternStorage = None
     create_pattern_storage = None
 
+try:
+    from .pid_agent import PIDDigitizationAgent, create_pid_digitization_agent
+except Exception:
+    PIDDigitizationAgent = None
+    create_pid_digitization_agent = None
+
 __all__ = [
     # Core Flickering System
     'RealityAnchorAgent',
@@ -131,4 +137,7 @@ __all__ = [
     'create_cache_manager',
     'PatternStorage',
     'create_pattern_storage',
+    # P&ID Digitization
+    'PIDDigitizationAgent',
+    'create_pid_digitization_agent',
 ]

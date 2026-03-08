@@ -36,8 +36,9 @@
 5. **Update your `.env`**:
    ```env
    # Code Agent Configuration
-   AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
-   AZURE_OPENAI_AGENT_PROJECT_ID=your-agent-id
+   AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+   AZURE_OPENAI_AGENT_NAME=edison-code-agent
+   AZURE_OPENAI_AGENT_MODEL=gpt-5.4
    
    # No API key needed! DefaultAzureCredential uses your az login
    ```
@@ -95,8 +96,9 @@
    AZURE_CLIENT_SECRET=xxxx
    
    # Code Agent Configuration
-   AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
-   AZURE_OPENAI_AGENT_PROJECT_ID=your-agent-id
+   AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+   AZURE_OPENAI_AGENT_NAME=edison-code-agent
+   AZURE_OPENAI_AGENT_MODEL=gpt-5.4
    ```
 
 3. **Restart the UI**
@@ -141,7 +143,7 @@ In the UI, ask a chart question and watch console output:
 **✅ Success:**
 ```
 Code Agent decision: YES
-🤖 Using Code Agent (GPT-4.1 + Code Interpreter)
+🤖 Using Code Agent (GPT-5.4 + Code Interpreter + Meta-Agent fallback)
 ```
 
 **❌ Failure:**
@@ -199,7 +201,7 @@ Make sure your Azure account has access to the subscription where the Azure AI P
 3. Copy the correct Agent ID
 4. Update `.env`:
    ```env
-   AZURE_OPENAI_AGENT_PROJECT_ID=correct-agent-id
+   AZURE_OPENAI_AGENT_NAME=edison-code-agent
    ```
 
 ### Error: "Authentication failed"
@@ -217,10 +219,11 @@ az login
 **Minimum for Code Agent:**
 ```env
 # Azure AI Projects Endpoint
-AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
 
 # Agent ID (from Azure Portal → AI Project → Agents)
-AZURE_OPENAI_AGENT_PROJECT_ID=your-agent-id
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
 
 # Authentication: Use one of these methods
 # Method 1: Azure CLI (run 'az login')
@@ -249,8 +252,9 @@ AZURE_SEARCH_API_KEY=your-search-key
 AZURE_SEARCH_INDEX_NAME=edison-engineering-diagrams
 
 # Code Agent Configuration (Phase 3)
-AZURE_OPENAI_AGENT_ENDPOINT=https://your-project.openai.azure.com
-AZURE_OPENAI_AGENT_PROJECT_ID=your-agent-id
+AZURE_OPENAI_AGENT_PROJECT_ENDPOINT=https://{account}.services.ai.azure.com/api/projects/{project}
+AZURE_OPENAI_AGENT_NAME=edison-code-agent
+AZURE_OPENAI_AGENT_MODEL=gpt-5.4
 
 # Optional: Service Principal (if not using az login)
 # AZURE_TENANT_ID=xxx
