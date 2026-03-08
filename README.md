@@ -1197,7 +1197,7 @@ flowchart LR
 
     subgraph Phase0["🎯 PHASE 0: INTELLIGENT PLANNING"]
         AutoPlan{"Auto-Planning<br/>Enabled?"}
-        PlanAgent["<b>PlanningAgentPro</b><br/>────────────<br/>• Analyzes first 1-3 pages<br/>• Uses gpt-5-pro LOW reasoning<br/>• Fast reconnaissance (15-30s)"]
+      PlanAgent["<b>PlanningAgentPro</b><br/>────────────<br/>• Analyzes first 1-3 pages<br/>• Uses gpt-5-pro via Responses API<br/>• Fast reconnaissance (15-30s)"]
         
         DetectBox["<b>Detection Phase</b><br/>────────────<br/>✓ Disciplines identified<br/>(civil, electrical, mechanical,<br/>P&ID, structural, hybrid)<br/>✓ Drawing types recognized<br/>(single-line, P&ID, plan-profile)<br/>✓ Complexity assessed<br/>(simple/medium/complex)<br/>✓ Key features cataloged<br/>(transformers, instruments, etc.)"]
         
@@ -1303,7 +1303,7 @@ flowchart LR
         
         RetrievalAgent["<b>Hybrid Retrieval</b><br/>────────────<br/>• Azure AI Search<br/>• Vector similarity<br/>• BM25 keyword<br/>• Top-K results"]
         
-        AnswerAgent["<b>gpt-5-pro Handler</b><br/>────────────<br/>• LOW reasoning<br/>• 90s timeout<br/>• Reasoning chain<br/>• Evidence extraction"]
+      AnswerAgent["<b>gpt-5-pro Handler</b><br/>────────────<br/>• Configurable reasoning<br/>• Dynamic timeout<br/>• Reasoning chain<br/>• Evidence extraction"]
         
         CodeAgent["<b>Code Agent</b><br/>(GPT-4.1)<br/>────────────<br/>• Python execution<br/>• Tables/Charts<br/>• CSV/Excel export<br/>• Calculations"]
         
@@ -1433,7 +1433,7 @@ The user provides either a PDF file, a folder containing images, or an Azure Blo
 
 **Process:**
 1. **Quick Sampling**: Extract first 1-3 pages as images
-2. **Fast Analysis**: Send to gpt-5-pro with LOW reasoning effort (15-30 seconds)
+2. **Fast Analysis**: Send to gpt-5-pro through the Responses API for quick reconnaissance (15-30 seconds)
 3. **Detection**:
    - Disciplines: civil, electrical, mechanical, P&ID, structural, or hybrid combinations
    - Drawing types: single-line, plan-and-profile, P&ID, connection details, etc.
@@ -1446,6 +1446,8 @@ The user provides either a PDF file, a folder containing images, or an Azure Blo
    - Note expected challenges
 
 **Output:** `AnalysisPlan` object with optimized configuration
+
+**Implementation Note:** Planning now uses the same Responses API path as the rest of EDISON PRO. This avoids the unsupported Chat Completions call path for `gpt-5-pro`.
 
 **Example Plan Output:**
 ```
@@ -1741,7 +1743,7 @@ python edisonpro.py \
 
 3. **Answer Generation** (`ask_question_pro`):
    - **Input**: User question + retrieved context chunks
-   - **Model**: gpt-5-pro with **LOW** reasoning effort (fast, 90s timeout)
+   - **Model**: gpt-5-pro with configurable reasoning effort and timeout based on that setting
    - **Prompt**: Engineering-focused instructions + context + question
    - **Responses API Call**: Synchronous call wrapped in async executor
    - **Parse Response**:
@@ -1828,7 +1830,7 @@ secondary voltage, with a capacity of 1000kVA.
 ### Key Components
 
 **Planning Agent (Phase 0 - EDISON PRO)**
-- 🔍 Runs first with gpt-5-pro low reasoning (15-30 seconds)
+- 🔍 Runs first with gpt-5-pro via the Responses API for quick reconnaissance (15-30 seconds)
 - Auto-detects: disciplines, drawing types, complexity, key features
 - Outputs: AnalysisPlan with recommended strategy
 - Optimizes: reasoning effort, concurrency, focus areas
@@ -2324,7 +2326,7 @@ This project uses Azure OpenAI services. Ensure you comply with:
 
 ### Web UI Features
 - 🧭 **Azure Search-Aware Initialization**: Commits pending documents and streams context from remote index
-- ⚡ **Responsive Reasoning**: Forces gpt-5-pro to LOW reasoning effort for the UI with reasoning chains
+- ⚡ **Responsive Reasoning**: Uses the configured gpt-5-pro reasoning path with reasoning chains and timeout management
 - 🧾 **Raw Output Fallback**: Displays raw model response when JSON parsing fails
 - 🧠 **Engineering Prompt Shortcuts**: Clickable sample questions for fast queries
 - 🎨 **Refined Interface**: Gradient engineering header, status panel, updated avatars

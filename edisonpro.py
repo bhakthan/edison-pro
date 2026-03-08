@@ -1088,31 +1088,45 @@ class PlanningAgentPro:
         image_contents = []
         for img_bytes, filename in samples:
             image_contents.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{base64.b64encode(img_bytes).decode('utf-8')}"
-                }
+                "type": "input_image",
+                "image_url": f"data:image/png;base64,{base64.b64encode(img_bytes).decode('utf-8')}"
             })
         
-        # Quick o3-pro call with low reasoning
+        # Quick o3-pro call via Responses API
         try:
-            response = self.client.chat.completions.create(
+            response = await safe_responses_api_call(
+                self.client,
                 model=self.deployment_name,
-                messages=[
+                input=[
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": planning_prompt},
+                            {"type": "input_text", "text": planning_prompt},
                             *image_contents
                         ]
                     }
                 ],
-                reasoning_effort=self.planning_reasoning_effort,
-                temperature=0.3,
-                max_completion_tokens=2000
+                reasoning={"effort": self.planning_reasoning_effort},
+                max_output_tokens=2000
             )
-            
-            plan_text = response.choices[0].message.content
+
+            plan_text = ""
+            if hasattr(response, 'output') and response.output:
+                for output_item in response.output:
+                    if hasattr(output_item, 'type') and output_item.type == 'message':
+                        if hasattr(output_item, 'content') and output_item.content:
+                            for content_item in output_item.content:
+                                if hasattr(content_item, 'text'):
+                                    plan_text += content_item.text
+                    elif hasattr(output_item, 'content') and output_item.content:
+                        for content_item in output_item.content:
+                            if hasattr(content_item, 'text'):
+                                plan_text += content_item.text
+                    elif hasattr(output_item, 'text'):
+                        plan_text += output_item.text
+
+            if not plan_text:
+                raise ValueError("Planning phase returned no message content")
             
             # Parse the structured response
             plan = self._parse_planning_response(plan_text, user_domain_hint)
@@ -4471,4 +4485,7 @@ async def cli_main_pro():
 # ============================================================================
 
 if __name__ == "__main__":
-    asyncio.run(cli_main_pro())
+    try:
+        asyncio.run(cli_main_pro())
+    except KeyboardInterrupt:
+        print("\nExecution interrupted. Exiting EDISON PRO.")
