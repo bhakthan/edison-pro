@@ -8,6 +8,33 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 
+try:
+    from azure.search.documents import SearchClient
+    from azure.core.credentials import AzureKeyCredential
+    HAS_AZURE_SEARCH = True
+except ImportError:
+    HAS_AZURE_SEARCH = False
+
+
+def _get_search_client() -> Optional["SearchClient"]:
+    """Return a SearchClient if Azure AI Search is configured, else None."""
+    if not HAS_AZURE_SEARCH:
+        return None
+    endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
+    api_key = os.getenv("AZURE_SEARCH_API_KEY")
+    index_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "edison-diagrams")
+    if not endpoint or not api_key:
+        return None
+    try:
+        return SearchClient(
+            endpoint=endpoint,
+            index_name=index_name,
+            credential=AzureKeyCredential(api_key),
+        )
+    except Exception as e:
+        print(f"[UPLOAD] Azure Search client init failed: {e}")
+        return None
+
 
 def process_uploaded_file(file_path: str) -> Dict:
     """
@@ -50,37 +77,61 @@ def process_uploaded_file(file_path: str) -> Dict:
 
 def list_indexed_documents() -> List[Dict]:
     """
-    List all indexed documents in the system.
-    
-    Returns:
-        List of document metadata dictionaries
+    List all indexed documents by querying the Azure AI Search index.
+    Falls back to scanning the local uploads/ folder when Search is unavailable.
     """
+    results: Dict[str, Dict] = {}
+
+    # ── 1. Query Azure AI Search for indexed source files ──────────────────
+    search_client = _get_search_client()
+    if search_client:
+        try:
+            # Use facets to collect distinct source_file values efficiently
+            response = search_client.search(
+                search_text="*",
+                facets=["source_file,count:1000"],
+                select=["source_file", "timestamp"],
+                top=0,
+            )
+            facet_data = response.get_facets() or {}
+            for facet in facet_data.get("source_file", []):
+                filename = facet.get("value", "")
+                if filename:
+                    results[filename] = {
+                        "filename": filename,
+                        "upload_date": None,
+                        "file_size": None,
+                        "indexed": True,
+                    }
+            print(f"[UPLOAD] Azure Search returned {len(results)} indexed source file(s)")
+        except Exception as e:
+            print(f"[UPLOAD] Azure Search facet query failed: {e}")
+
+    # ── 2. Merge with local uploads/ folder (catches files not yet committed) ──
     try:
-        # TODO: Query Azure AI Search for indexed documents
-        # This should return actual documents from the search index
-        
-        # For now, return files from upload folder
         from config import UPLOAD_FOLDER
-        
-        if not os.path.exists(UPLOAD_FOLDER):
-            return []
-        
-        documents = []
-        for file in Path(UPLOAD_FOLDER).iterdir():
-            if file.is_file():
-                documents.append({
-                    "filename": file.name,
-                    "upload_date": datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
-                    "file_size": file.stat().st_size,
-                    "indexed": False  # Update when implementing actual indexing
-                })
-        
-        print(f"[UPLOAD] Found {len(documents)} documents")
-        return documents
-        
+        upload_path = Path(UPLOAD_FOLDER)
+        if upload_path.exists():
+            for file in upload_path.iterdir():
+                if file.is_file():
+                    name = file.name
+                    stat = file.stat()
+                    if name not in results:
+                        results[name] = {
+                            "filename": name,
+                            "upload_date": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                            "file_size": stat.st_size,
+                            "indexed": False,
+                        }
+                    else:
+                        # Enrich Search entry with local file metadata
+                        results[name]["upload_date"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                        results[name]["file_size"] = stat.st_size
     except Exception as e:
-        print(f"[UPLOAD ERROR] Failed to list documents: {str(e)}")
-        return []
+        print(f"[UPLOAD] Local folder scan failed: {e}")
+
+    print(f"[UPLOAD] Total documents available: {len(results)}")
+    return list(results.values())
 
 
 def delete_document(filename: str) -> bool:

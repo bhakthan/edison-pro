@@ -381,13 +381,22 @@ async def get_status():
     """Get system status"""
     orch = get_orchestrator()
     agent = get_agent()
-    
+
+    azure_search_ready = orch.context_manager.search_client is not None if orch else False
+
+    # Count documents from the index (or fall back to in-memory chunk store)
+    try:
+        docs = await asyncio.to_thread(list_indexed_documents)
+        documents_count = len(docs)
+    except Exception:
+        documents_count = len(orch.context_manager.chunk_store) if orch else 0
+
     return StatusResponse(
         status="ready",
         orchestrator_ready=orch is not None,
         code_agent_ready=agent.available if agent else False,
-        azure_search_ready=orch.context_manager.search_client is not None if orch else False,
-        documents_count=len(orch.context_manager.chunk_store) if orch else 0
+        azure_search_ready=azure_search_ready,
+        documents_count=documents_count
     )
 
 @app.post("/upload")
