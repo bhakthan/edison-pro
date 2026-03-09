@@ -15,6 +15,7 @@ export function DynamicAgentStudio() {
   const [ensureLoading, setEnsureLoading] = useState(false);
   const [runLoading, setRunLoading] = useState(false);
   const [opsLoading, setOpsLoading] = useState(false);
+  const [autonomousMode, setAutonomousMode] = useState(true);
 
   const [task, setTask] = useState('');
   const [contextJson, setContextJson] = useState('{"domain":"engineering-diagrams","priority":"high"}');
@@ -122,20 +123,22 @@ export function DynamicAgentStudio() {
     load();
   }, []);
 
+  const parseContext = () => {
+    if (!contextJson.trim()) {
+      return undefined;
+    }
+    return JSON.parse(contextJson) as Record<string, unknown>;
+  };
+
   const handleEnsureAgent = async () => {
     if (!task.trim()) return;
     setEnsureLoading(true);
     setError('');
     setEnsureResult(null);
     try {
-      let context: Record<string, unknown> | undefined;
-      if (contextJson.trim()) {
-        context = JSON.parse(contextJson);
-      }
-
       const result = await api.ensureDynamicAgent({
         task: task.trim(),
-        context,
+        context: parseContext(),
         allow_create: true,
       });
 
@@ -153,16 +156,40 @@ export function DynamicAgentStudio() {
   };
 
   const handleRunAgent = async () => {
-    if (!selectedAgentId || !prompt.trim()) return;
+    if (!prompt.trim()) return;
     setRunLoading(true);
     setError('');
     setRunResult(null);
     try {
+      const effectiveTask = task.trim() || prompt.trim();
+      let resolvedAgentId = selectedAgentId;
+
+      if (autonomousMode) {
+        const ensuredAgent = await api.ensureDynamicAgent({
+          task: effectiveTask,
+          context: parseContext(),
+          allow_create: true,
+        });
+
+        setEnsureResult(ensuredAgent);
+        if (!ensuredAgent.agent) {
+          throw new Error('Autonomous mode could not resolve or create an agent for this task.');
+        }
+
+        resolvedAgentId = ensuredAgent.agent.agent_id;
+        setSelectedAgentId(ensuredAgent.agent.agent_id);
+        await load();
+      }
+
+      if (!resolvedAgentId) {
+        throw new Error('Select an agent or enable autonomous mode.');
+      }
+
       const result = await api.runDynamicAgent({
-        agent_id: selectedAgentId,
+        agent_id: resolvedAgentId,
         prompt: prompt.trim(),
         session_id: sessionId.trim() || undefined,
-        task: task.trim() || undefined,
+        task: effectiveTask,
         auto_refine: autoRefine,
         min_score: minScore,
         max_refinement_rounds: maxRefinementRounds,
@@ -221,13 +248,31 @@ export function DynamicAgentStudio() {
     <div className="chat-container" style={{ overflowY: 'auto', display: 'block' }}>
       <div className="max-w-6xl mx-auto p-6 space-y-6">
         <div className="rounded-2xl border border-cyan-200 bg-gradient-to-r from-cyan-50 to-teal-50 p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <Sparkles className="w-5 h-5 text-cyan-700" />
-            <h2 className="text-xl font-bold text-slate-900">Dynamic Agent Studio</h2>
+          <div className="flex items-center justify-between gap-4 mb-2 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-5 h-5 text-cyan-700" />
+              <h2 className="text-xl font-bold text-slate-900">Dynamic Agent Studio</h2>
+            </div>
+            <label className="inline-flex items-center gap-3 rounded-full border border-cyan-200 bg-white px-3 py-2 text-sm text-slate-800">
+              <span className="font-semibold">Autonomous mode</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autonomousMode}
+                onClick={() => setAutonomousMode((value) => !value)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autonomousMode ? 'bg-cyan-600' : 'bg-slate-300'}`}
+                title={autonomousMode ? 'Autonomous mode is on' : 'Autonomous mode is off'}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${autonomousMode ? 'translate-x-5' : 'translate-x-1'}`}
+                />
+              </button>
+            </label>
           </div>
           <p className="text-sm text-slate-700">
-            Meta-agent workflow: if no existing agent can do a task, the system creates a new specialist agent on the fly,
-            registers it, and runs it in-session.
+            {autonomousMode
+              ? 'Autonomous mode is on. When you run a task, the studio will first try to match an existing agent and, if needed, create a new specialist automatically before executing it.'
+              : 'Manual mode is on. You can inspect the registry, explicitly create an agent for a task, and choose which agent to run.'}
           </p>
           {status && (
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -448,12 +493,17 @@ export function DynamicAgentStudio() {
           <div className="xl:col-span-2 space-y-5">
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-                <PlusCircle className="w-4 h-4" /> Ensure Agent For Task
+                <PlusCircle className="w-4 h-4" /> {autonomousMode ? 'Manual Agent Creation' : 'Ensure Agent For Task'}
               </h3>
+              <p className="mb-3 text-sm text-slate-600">
+                {autonomousMode
+                  ? 'Optional: pre-create or inspect a task-specific agent manually. This is no longer required before running a task.'
+                  : 'Describe a missing capability to match an existing specialist or create a new one before running it.'}
+              </p>
               <div className="space-y-3">
                 <textarea
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400"
-                  placeholder="Describe the missing capability task..."
+                  placeholder="Describe the task or missing capability..."
                   rows={3}
                   value={task}
                   onChange={(e) => setTask(e.target.value)}
@@ -493,10 +543,17 @@ export function DynamicAgentStudio() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-                <PlayCircle className="w-4 h-4" /> Run Selected Agent
+                <PlayCircle className="w-4 h-4" /> {autonomousMode ? 'Run Task Autonomously' : 'Run Selected Agent'}
               </h3>
 
-              {selectedAgent ? (
+              {autonomousMode ? (
+                <div className="mb-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3">
+                  <p className="text-sm font-medium text-cyan-900">Autonomous routing enabled</p>
+                  <p className="text-xs text-cyan-800 mt-1">
+                    The run action will resolve the best existing agent for the task and create a new specialist only if the registry cannot satisfy it.
+                  </p>
+                </div>
+              ) : selectedAgent ? (
                 <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-medium text-slate-900">{selectedAgent.name}</p>
                   <p className="text-xs text-slate-600 mt-1">Model: {selectedAgent.model}</p>
@@ -514,7 +571,7 @@ export function DynamicAgentStudio() {
                 />
                 <textarea
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400"
-                  placeholder="Prompt for the selected agent"
+                  placeholder={autonomousMode ? 'Describe the task you want completed. The studio will resolve or create the right agent automatically.' : 'Prompt for the selected agent'}
                   rows={4}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -557,10 +614,10 @@ export function DynamicAgentStudio() {
                   type="button"
                   className="inline-flex items-center gap-2 rounded-xl bg-teal-600 text-white px-4 py-2 text-sm font-semibold hover:bg-teal-700 disabled:opacity-60"
                   onClick={handleRunAgent}
-                  disabled={runLoading || !selectedAgentId || !prompt.trim()}
+                  disabled={runLoading || (!autonomousMode && !selectedAgentId) || !prompt.trim()}
                 >
                   {runLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-                  Run Agent
+                  {autonomousMode ? 'Resolve Agent and Run' : 'Run Agent'}
                 </button>
               </div>
 
