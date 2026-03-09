@@ -14,6 +14,8 @@ import {
   LayoutTemplate,
   AlertCircle,
   CheckCircle,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { api } from './api/client';
 import type { Message, ChatResponse, TemplateExecutionResponse } from './types';
@@ -25,9 +27,27 @@ import { InnovativeFeatures } from './components/InnovativeFeatures';
 import { DynamicAgentStudio } from './components/DynamicAgentStudio';
 import './App.css';
 
+type ThemeMode = 'light' | 'dark';
+
+const THEME_STORAGE_KEY = 'edisonpro-theme';
+
+function getInitialTheme(): ThemeMode {
+  if (typeof window === 'undefined') {
+    return 'dark';
+  }
+
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (storedTheme === 'light' || storedTheme === 'dark') {
+    return storedTheme;
+  }
+
+  return 'dark';
+}
+
 function App() {
   type TabId = 'upload' | 'chat' | 'templates' | 'features' | 'flickering' | 'dynamic';
   const [activeTab, setActiveTab] = useState<TabId>('upload');
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
   const [isNavCollapsed, setIsNavCollapsed] = useState(true);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [activeDocument, setActiveDocument] = useState<string | null>(null);
@@ -46,6 +66,12 @@ function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.body.dataset.theme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,6 +250,10 @@ function App() {
     setIsMobileNavOpen(false);
   };
 
+  const toggleTheme = () => {
+    setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'));
+  };
+
   return (
     <div className="app-shell">
       <aside className={`side-nav ${isNavCollapsed ? 'collapsed' : ''} ${isMobileNavOpen ? 'open' : ''}`}>
@@ -298,6 +328,16 @@ function App() {
           </div>
 
           <div className="topbar-actions">
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            >
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            </button>
             {messages.length > 0 && (
               <button
                 onClick={handleGenerateResults}

@@ -70,6 +70,47 @@ class ResultsPageGenerator:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDISON PRO - Analysis Results</title>
     <style>
+        :root {{
+            --bg-canvas: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --bg-surface: #ffffff;
+            --bg-subtle: #f8f9fa;
+            --bg-elevated: #ffffff;
+            --text-primary: #333333;
+            --text-secondary: #666666;
+            --text-muted: #999999;
+            --border-soft: #e0e0e0;
+            --accent: #667eea;
+            --accent-strong: #5568d3;
+            --accent-soft: rgba(102, 126, 234, 0.14);
+            --success: #4CAF50;
+            --success-strong: #45a049;
+            --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+            --header-background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }}
+
+        html[data-theme='dark'] {{
+            color-scheme: dark;
+            --bg-canvas: radial-gradient(circle at 14% 18%, rgba(57, 199, 178, 0.16), transparent 26%), radial-gradient(circle at 86% 22%, rgba(96, 165, 250, 0.18), transparent 30%), linear-gradient(160deg, #050b14 0%, #081120 42%, #0d1728 100%);
+            --bg-surface: #0d1728;
+            --bg-subtle: #111d31;
+            --bg-elevated: #162337;
+            --text-primary: #e5edf7;
+            --text-secondary: #9cb0c7;
+            --text-muted: #7d92ab;
+            --border-soft: rgba(148, 163, 184, 0.18);
+            --accent: #7aa2ff;
+            --accent-strong: #9cc9ff;
+            --accent-soft: rgba(122, 162, 255, 0.16);
+            --success: #43d393;
+            --success-strong: #67e8a4;
+            --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.4);
+            --shadow-md: 0 10px 24px rgba(0, 0, 0, 0.22);
+            --shadow-sm: 0 8px 20px rgba(0, 0, 0, 0.18);
+            --header-background: radial-gradient(circle at 82% 18%, rgba(251, 146, 60, 0.12), transparent 28%), linear-gradient(135deg, rgba(16, 37, 52, 0.96) 0%, rgba(8, 20, 36, 0.98) 100%);
+        }}
+
         * {{
             margin: 0;
             padding: 0;
@@ -78,26 +119,40 @@ class ResultsPageGenerator:
         
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--bg-canvas);
             padding: 2rem;
-            color: #333;
+            color: var(--text-primary);
             line-height: 1.6;
+            transition: background 0.25s ease, color 0.25s ease;
         }}
         
         .container {{
             max-width: 1400px;
             margin: 0 auto;
-            background: white;
+            background: var(--bg-surface);
             border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: var(--shadow-lg);
             overflow: hidden;
+            border: 1px solid var(--border-soft);
         }}
         
         .header {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--header-background);
             color: white;
             padding: 2rem;
+        }}
+
+        .header-bar {{
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+        }}
+
+        .header-copy {{
+            flex: 1;
             text-align: center;
+            padding-left: 3rem;
         }}
         
         .header h1 {{
@@ -123,6 +178,24 @@ class ResultsPageGenerator:
             opacity: 0.8;
             margin-top: 0.5rem;
         }}
+
+        .theme-toggle {{
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            color: white;
+            padding: 0.55rem 0.9rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: transform 0.2s ease, background 0.2s ease;
+            white-space: nowrap;
+        }}
+
+        .theme-toggle:hover {{
+            background: rgba(255, 255, 255, 0.18);
+            transform: translateY(-1px);
+        }}
         
         .content {{
             padding: 2rem;
@@ -131,14 +204,17 @@ class ResultsPageGenerator:
         .section {{
             margin-bottom: 3rem;
             padding: 2rem;
-            background: #f8f9fa;
+            background: var(--bg-subtle);
             border-radius: 12px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid var(--accent);
+            border-top: 1px solid var(--border-soft);
+            border-right: 1px solid var(--border-soft);
+            border-bottom: 1px solid var(--border-soft);
         }}
         
         .section-title {{
             font-size: 1.8rem;
-            color: #667eea;
+            color: var(--accent);
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
@@ -157,16 +233,19 @@ class ResultsPageGenerator:
         }}
         
         .summary-card {{
-            background: white;
+            background: var(--bg-elevated);
             padding: 1.5rem;
             border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            border-left: 4px solid #667eea;
+            box-shadow: var(--shadow-md);
+            border-left: 4px solid var(--accent);
+            border-top: 1px solid var(--border-soft);
+            border-right: 1px solid var(--border-soft);
+            border-bottom: 1px solid var(--border-soft);
         }}
         
         .summary-card .label {{
             font-size: 0.9rem;
-            color: #666;
+            color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: 0.5rem;
@@ -175,20 +254,21 @@ class ResultsPageGenerator:
         .summary-card .value {{
             font-size: 2rem;
             font-weight: bold;
-            color: #667eea;
+            color: var(--accent);
         }}
         
         .qa-item {{
-            background: white;
+            background: var(--bg-elevated);
             padding: 1.5rem;
             border-radius: 12px;
             margin-bottom: 1.5rem;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-soft);
         }}
         
         .question {{
             font-weight: 600;
-            color: #667eea;
+            color: var(--accent);
             margin-bottom: 1rem;
             font-size: 1.1rem;
             display: flex;
@@ -198,7 +278,7 @@ class ResultsPageGenerator:
         
         .question::before {{
             content: "Q:";
-            background: #667eea;
+            background: var(--accent);
             color: white;
             padding: 0.25rem 0.5rem;
             border-radius: 4px;
@@ -207,7 +287,7 @@ class ResultsPageGenerator:
         }}
         
         .answer {{
-            color: #333;
+            color: var(--text-primary);
             padding-left: 2.5rem;
             white-space: pre-wrap;
             word-wrap: break-word;
@@ -215,7 +295,7 @@ class ResultsPageGenerator:
         
         .answer::before {{
             content: "A:";
-            background: #4CAF50;
+            background: var(--success);
             color: white;
             padding: 0.25rem 0.5rem;
             border-radius: 4px;
@@ -229,15 +309,16 @@ class ResultsPageGenerator:
         }}
         
         .file-item {{
-            background: white;
+            background: var(--bg-elevated);
             padding: 1rem 1.5rem;
             margin-bottom: 1rem;
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow-sm);
             transition: transform 0.2s;
+            border: 1px solid var(--border-soft);
         }}
         
         .file-item:hover {{
@@ -261,18 +342,18 @@ class ResultsPageGenerator:
         
         .file-name {{
             font-weight: 600;
-            color: #333;
+            color: var(--text-primary);
             margin-bottom: 0.25rem;
         }}
         
         .file-path {{
             font-size: 0.85rem;
-            color: #666;
+            color: var(--text-secondary);
             font-family: 'Courier New', monospace;
         }}
         
         .file-size {{
-            color: #999;
+            color: var(--text-muted);
             font-size: 0.9rem;
         }}
         
@@ -293,32 +374,38 @@ class ResultsPageGenerator:
         }}
         
         .btn-primary {{
-            background: #667eea;
+            background: var(--accent);
             color: white;
         }}
         
         .btn-primary:hover {{
-            background: #5568d3;
+            background: var(--accent-strong);
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }}
         
         .btn-secondary {{
-            background: #4CAF50;
+            background: var(--success);
             color: white;
         }}
         
         .btn-secondary:hover {{
-            background: #45a049;
+            background: var(--success-strong);
             transform: translateY(-2px);
         }}
         
         .chart-container {{
-            background: white;
+            background: var(--bg-elevated);
             padding: 1rem;
             border-radius: 12px;
             margin-bottom: 1.5rem;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-soft);
+        }}
+
+        .chart-title {{
+            margin-bottom: 1rem;
+            color: var(--accent);
         }}
         
         .chart-container iframe {{
@@ -326,21 +413,43 @@ class ResultsPageGenerator:
             height: 600px;
             border: none;
             border-radius: 8px;
+            background: white;
         }}
         
         .no-data {{
             text-align: center;
             padding: 3rem;
-            color: #999;
+            color: var(--text-muted);
             font-style: italic;
         }}
         
         .footer {{
             text-align: center;
             padding: 2rem;
-            background: #f8f9fa;
-            color: #666;
-            border-top: 1px solid #e0e0e0;
+            background: var(--bg-subtle);
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border-soft);
+        }}
+
+        @media (max-width: 900px) {{
+            .header-bar {{
+                flex-direction: column;
+                align-items: stretch;
+            }}
+
+            .header-copy {{
+                padding-left: 0;
+            }}
+
+            .theme-toggle {{
+                align-self: flex-end;
+            }}
+
+            .file-item {{
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }}
         }}
         
         @media print {{
@@ -349,7 +458,8 @@ class ResultsPageGenerator:
                 padding: 0;
             }}
             
-            .btn {{
+            .btn,
+            .theme-toggle {{
                 display: none;
             }}
         }}
@@ -358,13 +468,19 @@ class ResultsPageGenerator:
 <body>
     <div class="container">
         <div class="header">
-            <h1>
-                <span class="icon">⚡</span>
-                EDISON PRO
-                <span class="icon">📊</span>
-            </h1>
-            <div class="subtitle">Engineering Diagram Analysis Results</div>
-            <div class="timestamp">Generated: {datetime.now().strftime("%B %d, %Y at %I:%M %p")}</div>
+            <div class="header-bar">
+                <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle color theme">Dark</button>
+                <div class="header-copy">
+                    <h1>
+                        <span class="icon">⚡</span>
+                        EDISON PRO
+                        <span class="icon">📊</span>
+                    </h1>
+                    <div class="subtitle">Engineering Diagram Analysis Results</div>
+                    <div class="timestamp">Generated: {datetime.now().strftime("%B %d, %Y at %I:%M %p")}</div>
+                </div>
+                <div style="width: 78px;"></div>
+            </div>
         </div>
         
         <div class="content">
@@ -440,7 +556,7 @@ class ResultsPageGenerator:
                 rel_path = os.path.relpath(chart_file, self.output_dir)
                 html += f"""
                 <div class="chart-container">
-                    <h3 style="margin-bottom: 1rem; color: #667eea;">{chart_name}</h3>
+                    <h3 class="chart-title">{chart_name}</h3>
                     <iframe src="{rel_path}" title="{chart_name}"></iframe>
                 </div>
 """
@@ -486,7 +602,7 @@ class ResultsPageGenerator:
                         </div>
                         <div class="file-actions">
                             <a href="{rel_path}" class="btn btn-primary" download>Download</a>
-                            <button class="btn btn-secondary" onclick="copyToClipboard('{abs_path.replace(chr(92), chr(92)+chr(92))}')">Copy Path</button>
+                            <button class="btn btn-secondary" onclick="copyToClipboard('{abs_path.replace(chr(92), chr(92)+chr(92))}', this)">Copy Path</button>
                         </div>
                     </li>
 """
@@ -509,16 +625,43 @@ class ResultsPageGenerator:
     </div>
     
     <script>
-        function copyToClipboard(text) {
+        const THEME_STORAGE_KEY = 'edisonpro-theme';
+
+        function applyTheme(theme) {
+            document.documentElement.dataset.theme = theme;
+            const toggle = document.getElementById('theme-toggle');
+            if (toggle) {
+                toggle.textContent = theme === 'dark' ? 'Light' : 'Dark';
+                toggle.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+            }
+        }
+
+        function initializeTheme() {
+            const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+            const theme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'dark';
+            applyTheme(theme);
+        }
+
+        function toggleTheme() {
+            const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+            applyTheme(nextTheme);
+        }
+
+        function copyToClipboard(text, button) {
             navigator.clipboard.writeText(text).then(() => {
-                event.target.textContent = '✓ Copied!';
+                const originalLabel = button.textContent;
+                button.textContent = '✓ Copied!';
                 setTimeout(() => {
-                    event.target.textContent = 'Copy Path';
+                    button.textContent = originalLabel;
                 }, 2000);
             }).catch(err => {
                 alert('Failed to copy: ' + err);
             });
         }
+
+        initializeTheme();
+        document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
     </script>
 </body>
 </html>

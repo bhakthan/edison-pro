@@ -450,3 +450,119 @@
     padding: 0 0.5rem;
   }
 }
+
+html[data-theme='dark'] .flickering-analysis {
+  border-color: rgba(148, 163, 184, 0.16);
+  background: #0d1728;
+  box-shadow: 0 20px 36px rgba(0, 0, 0, 0.28);
+}
+
+html[data-theme='dark'] .flickering-header {
+  border-color: #26384e;
+  background:
+    radial-gradient(circle at 94% 10%, rgba(56, 189, 248, 0.14), transparent 32%),
+    linear-gradient(135deg, #102338, #091423);
+}
+
+html[data-theme='dark'] .flickering-header h2,
+html[data-theme='dark'] .parameters-section h3,
+html[data-theme='dark'] .results-summary h3,
+html[data-theme='dark'] .interpretation-section h3,
+html[data-theme='dark'] .attention-trace h3,
+html[data-theme='dark'] .mismatch-events h3,
+html[data-theme='dark'] .alternatives-section h3,
+html[data-theme='dark'] .alternative-type {
+  color: #e5edf7;
+}
+
+html[data-theme='dark'] .flickering-header p,
+html[data-theme='dark'] .parameter-help-box p,
+html[data-theme='dark'] .parameter-help-box ul,
+html[data-theme='dark'] .interpretation-text,
+html[data-theme='dark'] .trace-axis,
+html[data-theme='dark'] .alternative-rationale,
+html[data-theme='dark'] .parameter-control label,
+html[data-theme='dark'] .parameter-hint,
+html[data-theme='dark'] .event-score,
+html[data-theme='dark'] .event-header {
+  color: #93a8c3;
+}
+
+html[data-theme='dark'] .flickering-controls,
+html[data-theme='dark'] .results-summary,
+html[data-theme='dark'] .interpretation-section,
+html[data-theme='dark'] .attention-trace,
+html[data-theme='dark'] .mismatch-events,
+html[data-theme='dark'] .alternatives-section {
+  border-color: rgba(148, 163, 184, 0.16);
+  background: #0f1a2c;
+}
+
+html[data-theme='dark'] .upload-label,
+html[data-theme='dark'] .summary-card,
+html[data-theme='dark'] .alternative-card,
+html[data-theme='dark'] .trace-visualization {
+  border-color: #28384e;
+  background: #111d31;
+  color: #e5edf7;
+}
+
+html[data-theme='dark'] .upload-label:hover {
+  border-color: #4b89b7;
+  background: #15243a;
+}
+
+html[data-theme='dark'] .image-preview,
+html[data-theme='dark'] .trace-visualization {
+  border-color: #28384e;
+}
+
+html[data-theme='dark'] .parameter-help-box {
+  border-color: #28435d;
+  background: linear-gradient(140deg, #0f1d30, #12253b);
+}
+
+html[data-theme='dark'] .parameter-control input,
+html[data-theme='dark'] .parameter-control select {
+  border-color: #2b3c52;
+  background: #091423;
+  color: #e5edf7;
+}
+
+html[data-theme='dark'] .summary-value,
+html[data-theme='dark'] .alternative-probability,
+html[data-theme='dark'] .legend-reality {
+  color: #46d3be;
+}
+
+html[data-theme='dark'] .legend-memory {
+  color: #ffbe63;
+}
+
+html[data-theme='dark'] .summary-label {
+  color: #93a8c3;
+}
+
+html[data-theme='dark'] .mismatch-marker {
+  color: #ff8c84;
+}
+
+html[data-theme='dark'] .event-card.novelty-low {
+  border-color: rgba(74, 222, 128, 0.4);
+  background: rgba(20, 83, 45, 0.26);
+}
+
+html[data-theme='dark'] .event-card.novelty-medium {
+  border-color: rgba(250, 204, 21, 0.42);
+  background: rgba(113, 63, 18, 0.28);
+}
+
+html[data-theme='dark'] .event-card.novelty-high {
+  border-color: rgba(251, 146, 60, 0.42);
+  background: rgba(124, 45, 18, 0.28);
+}
+
+html[data-theme='dark'] .event-card.novelty-critical {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(127, 29, 29, 0.28);
+}

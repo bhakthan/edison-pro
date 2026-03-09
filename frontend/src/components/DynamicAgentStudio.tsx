@@ -452,14 +452,14 @@ export function DynamicAgentStudio() {
               </h3>
               <div className="space-y-3">
                 <textarea
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400"
                   placeholder="Describe the missing capability task..."
                   rows={3}
                   value={task}
                   onChange={(e) => setTask(e.target.value)}
                 />
                 <textarea
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 placeholder-slate-400"
                   placeholder="Optional JSON context"
                   rows={4}
                   value={contextJson}
@@ -507,13 +507,13 @@ export function DynamicAgentStudio() {
 
               <div className="space-y-3">
                 <input
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400"
                   placeholder="Session ID (optional, for memory continuity)"
                   value={sessionId}
                   onChange={(e) => setSessionId(e.target.value)}
                 />
                 <textarea
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400"
                   placeholder="Prompt for the selected agent"
                   rows={4}
                   value={prompt}
@@ -537,7 +537,7 @@ export function DynamicAgentStudio() {
                       step={0.01}
                       value={minScore}
                       onChange={(e) => setMinScore(Number(e.target.value || 0.72))}
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1"
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-slate-900"
                     />
                   </label>
                   <label className="text-sm text-slate-700">
@@ -549,7 +549,7 @@ export function DynamicAgentStudio() {
                       step={1}
                       value={maxRefinementRounds}
                       onChange={(e) => setMaxRefinementRounds(Number(e.target.value || 1))}
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1"
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-slate-900"
                     />
                   </label>
                 </div>

@@ -158,7 +158,7 @@ export function NativeInsightsGraph({ edges, sheetHints, focusSheetIds = [], hig
 
 	return (
 		<div className="space-y-4">
-			<div className="rounded-2xl border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_52%),linear-gradient(180deg,_#ffffff_0%,_#eff6ff_100%)] p-3">
+			<div className="native-graph-stage rounded-2xl border border-slate-200 p-3">
 				<svg viewBox="0 0 360 250" className="w-full h-auto" role="img" aria-label="Cross-sheet graph visualization">
 					<defs>
 						<filter id="nodeShadow" x="-20%" y="-20%" width="140%" height="140%">
