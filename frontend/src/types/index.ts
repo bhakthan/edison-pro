@@ -54,6 +54,69 @@ export interface AnalysisStatus {
   chunks?: number;
   images_processed?: number;
   files?: string[];
+  native_insights?: NativeInsights;
+}
+
+export interface SheetCorrelationHint {
+  sheet_id: string;
+  page_span?: number[];
+  top_components?: string[];
+  top_references?: string[];
+  top_standards?: string[];
+  top_tags?: string[];
+}
+
+export interface CrossSheetEdge {
+  from_sheet_id: string;
+  to_sheet_id: string;
+  weight: number;
+  relationship_strength?: string;
+  shared_components?: string[];
+  shared_references?: string[];
+  shared_standards?: string[];
+  shared_tags?: string[];
+}
+
+export interface ConnectorHub {
+  signal: string;
+  kind: string;
+  sheet_count: number;
+}
+
+export interface CrossSheetGraph {
+  edges?: CrossSheetEdge[];
+  connector_hubs?: ConnectorHub[];
+  summary_lines?: string[];
+}
+
+export interface AnomalyDetectionSummary {
+  has_anomalies: boolean;
+  risk_score: number;
+  anomaly_count: number;
+  severity_counts?: Record<string, number>;
+  top_failure_types?: Array<[string, number]>;
+  anomalies?: AnomalyRecord[];
+  summary_lines?: string[];
+}
+
+export interface AnomalyRecord {
+  chunk_id?: string;
+  sheet_id?: string;
+  domain?: string;
+  failure_type?: string;
+  severity?: string;
+  signals?: string[];
+  confidence?: number;
+}
+
+export interface NativeInsights {
+  backend?: string;
+  measurement_frequency?: Array<[string, number]>;
+  standard_frequency?: Array<[string, number]>;
+  tag_frequency?: Array<[string, number]>;
+  sheet_correlation_hints?: SheetCorrelationHint[];
+  cross_sheet_graph?: CrossSheetGraph;
+  anomaly_detection?: AnomalyDetectionSummary;
 }
 
 export interface SystemStatus {
@@ -143,4 +206,79 @@ export interface RunDynamicAgentResponse {
   refinement_applied?: boolean;
   refinement_rounds?: number;
   agent_version?: number;
+}
+
+// P&ID Digitization types — mirrors PIDAnalysisResponse in api.py
+
+export interface PIDSymbol {
+  id: string;
+  category: string;
+  label: string;
+  bbox: [number, number, number, number]; // [x, y, w, h]
+  confidence: number;
+  sheet_id?: string;
+  [key: string]: unknown;
+}
+
+export interface PIDLine {
+  id: string;
+  start: [number, number];
+  end: [number, number];
+  angle_deg: number;
+  length_px: number;
+  sheet_id?: string;
+  [key: string]: unknown;
+}
+
+export interface PIDTextAnnotation {
+  id: string;
+  text: string;
+  bbox: [number, number, number, number];
+  confidence: number;
+  [key: string]: unknown;
+}
+
+export interface PIDGraphNode {
+  id: string;
+  kind: string;
+  label: string;
+  sheet_id?: string;
+  [key: string]: unknown;
+}
+
+export interface PIDGraphEdge {
+  source: string;
+  target: string;
+  weight?: number;
+  [key: string]: unknown;
+}
+
+export interface PIDTraversalPath {
+  source: string;
+  target: string;
+  path: string[];
+  [key: string]: unknown;
+}
+
+export interface PIDAnalysisResult {
+  success: boolean;
+  filename: string;
+  sheet_id: string;
+  image_width: number;
+  image_height: number;
+  symbol_count: number;
+  line_count: number;
+  text_token_count: number;
+  node_count: number;
+  edge_count: number;
+  traversal_path_count: number;
+  symbols: PIDSymbol[];
+  lines: PIDLine[];
+  text_annotations: PIDTextAnnotation[];
+  nodes: PIDGraphNode[];
+  edges: PIDGraphEdge[];
+  traversal_paths: PIDTraversalPath[];
+  processing_stages: string[];
+  warnings: string[];
+  latency_ms: number;
 }

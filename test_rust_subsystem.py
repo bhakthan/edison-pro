@@ -160,6 +160,98 @@ class RustSubsystemImageExtractionTests(unittest.TestCase):
         self.assertIn("measurements", summary_lines.lower())
         self.assertIn("standards", summary_lines.lower())
 
+    def test_analyze_chunks_builds_cross_sheet_graph(self) -> None:
+        subsystem = self._with_enabled_subsystem()
+
+        chunks = [
+            {
+                "chunk_id": "chunk_001",
+                "content": "Pump P-201 discharge pressure is 125 psi per ASME B31.3 and feeds valve XV-12.",
+                "metadata": {
+                    "chunk_id": "chunk_001",
+                    "page_numbers": [0],
+                    "diagram_type": "pid",
+                    "reference_numbers": ["P-201", "XV-12"],
+                    "components": ["pump", "valve"],
+                    "source_file": "sheet_a.png",
+                },
+            },
+            {
+                "chunk_id": "chunk_002",
+                "content": "Sheet continuation for P-201 connects through XV-12 with shutdown permissive.",
+                "metadata": {
+                    "chunk_id": "chunk_002",
+                    "page_numbers": [1],
+                    "diagram_type": "pid",
+                    "reference_numbers": ["P-201", "XV-12"],
+                    "components": ["pump", "controller"],
+                    "source_file": "sheet_b.png",
+                },
+            },
+        ]
+
+        result = subsystem.analyze_chunks(chunks, {})
+
+        graph = result.get("cross_sheet_graph", {})
+        self.assertTrue(graph)
+        edges = graph.get("edges", [])
+        self.assertTrue(edges)
+        edge = edges[0]
+        self.assertEqual(edge.get("from_sheet_id"), "sheet_a")
+        self.assertEqual(edge.get("to_sheet_id"), "sheet_b")
+        self.assertIn("P-201", edge.get("shared_references", []))
+        self.assertIn("XV-12", edge.get("shared_references", []))
+        self.assertGreater(edge.get("weight", 0), 0)
+        summary_lines = "\n".join(graph.get("summary_lines", []))
+        self.assertIn("sheet_a", summary_lines)
+        self.assertIn("sheet_b", summary_lines)
+
+    def test_detect_rule_based_anomalies_flags_electrical_and_pid_risks(self) -> None:
+        subsystem = self._with_enabled_subsystem()
+
+        chunks = [
+            {
+                "chunk_id": "chunk_001",
+                "content": "Panel MCC-101 operates at 480V and follows IEEE 1584 arc flash guidance.",
+                "metadata": {
+                    "chunk_id": "chunk_001",
+                    "page_numbers": [0],
+                    "diagram_type": "electrical",
+                    "reference_numbers": ["MCC-101"],
+                    "components": ["panel", "breaker"],
+                    "source_file": "sheet_a.png",
+                },
+            },
+            {
+                "chunk_id": "chunk_002",
+                "content": "Pump P-201 discharge pressure is 125 psi per ASME B31.3.",
+                "metadata": {
+                    "chunk_id": "chunk_002",
+                    "page_numbers": [1],
+                    "diagram_type": "pid",
+                    "reference_numbers": ["P-201"],
+                    "components": ["pump"],
+                    "source_file": "sheet_b.png",
+                },
+            },
+        ]
+
+        insight_summary = subsystem.analyze_chunks(chunks, {})
+        anomaly_summary = subsystem.detect_rule_based_anomalies(chunks, insight_summary)
+
+        self.assertIn(anomaly_summary.get("backend"), {"rust-native", "python-fallback"})
+        self.assertTrue(anomaly_summary.get("has_anomalies"))
+        self.assertGreater(anomaly_summary.get("risk_score", 0.0), 0.0)
+        failure_types = {item.get("failure_type") for item in anomaly_summary.get("anomalies", [])}
+        self.assertIn("grounding_violation", failure_types)
+        self.assertIn("arc_flash_hazard", failure_types)
+        self.assertIn("pressure_relief_missing", failure_types)
+        self.assertIn("interlock_missing", failure_types)
+        self.assertTrue(all(item.get("sheet_id") for item in anomaly_summary.get("anomalies", [])))
+        summary_lines = "\n".join(anomaly_summary.get("summary_lines", []))
+        self.assertIn("anomaly", summary_lines.lower())
+        self.assertIn("risk score", summary_lines.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

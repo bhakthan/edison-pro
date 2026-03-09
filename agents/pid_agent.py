@@ -376,7 +376,11 @@ class PIDTextDetector:
         api_key: Optional[str] = None,
     ):
         self.endpoint = endpoint or os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
-        self.api_key = api_key or os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY")
+        # Accept canonical name (from .env.example) and legacy compatibility alias
+        self.api_key = api_key or (
+            os.getenv("AZURE_DOCUMENT_INTELLIGENCE_API_KEY") or
+            os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY")
+        )
 
     def detect(self, image: Image.Image) -> List[PIDTextAnnotation]:
         if self.endpoint and self.api_key and HAS_AZURE_DI:
@@ -891,7 +895,10 @@ class PIDDigitizationAgent:
             openai_client=client,
             vision_deployment=vision_deployment,
             di_endpoint=os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT"),
-            di_key=os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY"),
+            di_key=(
+                os.getenv("AZURE_DOCUMENT_INTELLIGENCE_API_KEY") or
+                os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY")
+            ),
         )
 
     # ── main entry point ──────────────────────────────────────────────────────
@@ -901,15 +908,19 @@ class PIDDigitizationAgent:
         image_path: Optional[str] = None,
         image_bytes: Optional[bytes] = None,
         sheet_id: str = "sheet_1",
+        enable_ocr: bool = True,
+        enable_graph: bool = True,
     ) -> PIDGraphResult:
         """
         Run full digitization pipeline on a P&ID image.
 
         Parameters
         ----------
-        image_path  : path to JPEG/PNG file on disk
-        image_bytes : raw image bytes (alternative to path)
-        sheet_id    : identifier for cross-sheet connector resolution
+        image_path   : path to JPEG/PNG file on disk
+        image_bytes  : raw image bytes (alternative to path)
+        sheet_id     : identifier for cross-sheet connector resolution
+        enable_ocr   : run Azure Document Intelligence OCR stage (default True)
+        enable_graph : build NetworkX connectivity graph + BFS traversal (default True)
         """
         t0 = time.time()
         warnings: List[str] = []
@@ -939,10 +950,15 @@ class PIDDigitizationAgent:
             warnings.append("No symbols detected; check model deployment or image quality")
 
         # ── Stage 3: OCR / Text Detection ──────────────────────────────────
-        logger.info("[PID] Stage 3: OCR / text detection")
-        text_annotations = self.text_detector.detect(image)
-        stages.append("ocr_text_detection")
-        logger.info("[PID]   → %d text tokens detected", len(text_annotations))
+        if enable_ocr:
+            logger.info("[PID] Stage 3: OCR / text detection")
+            text_annotations = self.text_detector.detect(image)
+            stages.append("ocr_text_detection")
+            logger.info("[PID]   → %d text tokens detected", len(text_annotations))
+        else:
+            logger.info("[PID] Stage 3: OCR skipped (enable_ocr=False)")
+            text_annotations = []
+            stages.append("ocr_text_detection_skipped")
 
         # ── Stage 4: Line Detection ─────────────────────────────────────────
         logger.info("[PID] Stage 4: Hough line detection")
@@ -963,23 +979,28 @@ class PIDDigitizationAgent:
         logger.info("[PID]   → %d line segments detected", len(raw_lines))
 
         # ── Stage 5: Graph Construction ─────────────────────────────────────
-        logger.info("[PID] Stage 5: Graph construction & traversal")
-        builder = PIDGraphBuilder(w, h)
-        if HAS_NX:
-            G = builder.build(symbols, raw_lines, text_annotations)
-            traversal_paths = self.traversal.traverse(G)
-            nodes_out = [
-                {"id": n, **{k: v for k, v in d.items() if k != "centroid"}}
-                for n, d in G.nodes(data=True)
-            ]
-            edges_out = [
-                {"from": u, "to": v, "edge_type": d.get("edge_type", "connected")}
-                for u, v, d in G.edges(data=True)
-            ]
+        if enable_graph:
+            logger.info("[PID] Stage 5: Graph construction & traversal")
+            builder = PIDGraphBuilder(w, h)
+            if HAS_NX:
+                G = builder.build(symbols, raw_lines, text_annotations)
+                traversal_paths = self.traversal.traverse(G)
+                nodes_out = [
+                    {"id": n, **{k: v for k, v in d.items() if k != "centroid"}}
+                    for n, d in G.nodes(data=True)
+                ]
+                edges_out = [
+                    {"from": u, "to": v, "edge_type": d.get("edge_type", "connected")}
+                    for u, v, d in G.edges(data=True)
+                ]
+            else:
+                warnings.append("networkx not available; graph construction skipped")
+                nodes_out, edges_out, traversal_paths = [], [], []
+            stages.append("graph_construction")
         else:
-            warnings.append("networkx not available; graph construction skipped")
+            logger.info("[PID] Stage 5: Graph construction skipped (enable_graph=False)")
             nodes_out, edges_out, traversal_paths = [], [], []
-        stages.append("graph_construction")
+            stages.append("graph_construction_skipped")
 
         latency = int((time.time() - t0) * 1000)
         logger.info("[PID] Completed in %d ms", latency)
@@ -1001,8 +1022,21 @@ class PIDDigitizationAgent:
 
     # ── convenience serialiser ─────────────────────────────────────────────
 
-    def digitize_to_dict(self, **kwargs) -> Dict[str, Any]:
-        result = self.digitize(**kwargs)
+    def digitize_to_dict(
+        self,
+        image_path: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+        sheet_id: str = "sheet_1",
+        enable_ocr: bool = True,
+        enable_graph: bool = True,
+    ) -> Dict[str, Any]:
+        result = self.digitize(
+            image_path=image_path,
+            image_bytes=image_bytes,
+            sheet_id=sheet_id,
+            enable_ocr=enable_ocr,
+            enable_graph=enable_graph,
+        )
         return {
             "sheet_id": result.sheet_id,
             "image_width": result.image_width,

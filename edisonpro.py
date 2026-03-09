@@ -2954,6 +2954,48 @@ class DiagramAnalysisOrchestratorPro:
         self.insight_summary = {}
         # Q&A history for few-shot injection (most recent exchanges first)
         self.qa_history: list = []  # List of (question, answer) tuples
+
+    def _build_public_native_insights(self) -> Dict[str, Any]:
+        """Return a compact API-safe view of native insight outputs."""
+        if not isinstance(self.insight_summary, dict) or not self.insight_summary:
+            return {}
+
+        cross_sheet_graph = self.insight_summary.get("cross_sheet_graph") or {}
+        anomaly_detection = self.insight_summary.get("anomaly_detection") or {}
+
+        return {
+            "backend": self.insight_summary.get("backend", "disabled"),
+            "measurement_frequency": self.insight_summary.get("measurement_frequency", [])[:5],
+            "standard_frequency": self.insight_summary.get("standard_frequency", [])[:5],
+            "tag_frequency": self.insight_summary.get("tag_frequency", [])[:5],
+            "sheet_correlation_hints": self.insight_summary.get("sheet_correlation_hints", [])[:8],
+            "cross_sheet_graph": {
+                "edges": cross_sheet_graph.get("edges", [])[:8],
+                "connector_hubs": cross_sheet_graph.get("connector_hubs", [])[:8],
+                "summary_lines": cross_sheet_graph.get("summary_lines", [])[:5],
+            },
+            "anomaly_detection": {
+                "has_anomalies": anomaly_detection.get("has_anomalies", False),
+                "risk_score": anomaly_detection.get("risk_score", 0.0),
+                "anomaly_count": anomaly_detection.get("anomaly_count", 0),
+                "severity_counts": anomaly_detection.get("severity_counts", {}),
+                "top_failure_types": anomaly_detection.get("top_failure_types", [])[:5],
+                "anomalies": [
+                    {
+                        "chunk_id": anomaly.get("chunk_id"),
+                        "sheet_id": anomaly.get("sheet_id"),
+                        "domain": anomaly.get("domain"),
+                        "failure_type": anomaly.get("failure_type"),
+                        "severity": anomaly.get("severity"),
+                        "signals": anomaly.get("signals", [])[:6],
+                        "confidence": anomaly.get("confidence", 0.0),
+                    }
+                    for anomaly in anomaly_detection.get("anomalies", [])[:8]
+                    if isinstance(anomaly, dict)
+                ],
+                "summary_lines": anomaly_detection.get("summary_lines", [])[:5],
+            },
+        }
     
     def _start_logging(self):
         """Start logging all output to file in intermediate directory"""
@@ -3116,9 +3158,20 @@ class DiagramAnalysisOrchestratorPro:
         try:
             insight_summary = rust_subsystem.analyze_chunks(chunks, self.visual_elements_by_chunk)
             self.insight_summary = insight_summary or {}
+            anomaly_summary = rust_subsystem.detect_rule_based_anomalies(chunks, self.insight_summary)
+            if anomaly_summary:
+                self.insight_summary["anomaly_detection"] = anomaly_summary
             self.context_manager.set_insight_summary(self.insight_summary)
 
             sheet_hints = self.insight_summary.get("sheet_correlation_hints", []) if isinstance(self.insight_summary, dict) else []
+            graph_edges = ((self.insight_summary.get("cross_sheet_graph") or {}).get("edges") or []) if isinstance(self.insight_summary, dict) else []
+            linked_sheet_map: Dict[str, List[str]] = defaultdict(list)
+            for edge in graph_edges:
+                from_sheet = edge.get("from_sheet_id")
+                to_sheet = edge.get("to_sheet_id")
+                if from_sheet and to_sheet:
+                    linked_sheet_map[from_sheet].append(to_sheet)
+                    linked_sheet_map[to_sheet].append(from_sheet)
             if sheet_hints:
                 self.sheet_correlations = {
                     hint.get("sheet_id", f"sheet_{index}"): {
@@ -3126,6 +3179,8 @@ class DiagramAnalysisOrchestratorPro:
                         "top_diagram_types": [],
                         "top_references": hint.get("top_references", []),
                         "top_standards": hint.get("top_standards", []),
+                        "top_tags": hint.get("top_tags", []),
+                        "linked_sheets": linked_sheet_map.get(hint.get("sheet_id", f"sheet_{index}"), [])[:5],
                         "total_components": len(hint.get("top_components", [])),
                     }
                     for index, hint in enumerate(sheet_hints)
@@ -3137,6 +3192,12 @@ class DiagramAnalysisOrchestratorPro:
                 print("   ⚙️  Native chunk insight analysis ready:")
                 print(f"      • Measurements: {measurements}")
                 print(f"      • Standards: {standards}")
+                graph_lines = ((self.insight_summary.get("cross_sheet_graph") or {}).get("summary_lines") or [])[:2]
+                for line in graph_lines:
+                    print(f"      • Cross-sheet: {line}")
+                anomaly_lines = ((self.insight_summary.get("anomaly_detection") or {}).get("summary_lines") or [])[:2]
+                for line in anomaly_lines:
+                    print(f"      • {line}")
         except Exception as exc:
             print(f"   ⚠️  Native chunk insight analysis unavailable: {exc}")
             self.insight_summary = {}
@@ -3230,6 +3291,7 @@ class DiagramAnalysisOrchestratorPro:
                 "intermediate_dir": result.get("intermediate_dir"),
                 "pdf_routing_primary": result.get("pdf_routing_primary"),
                 "pdf_classification": result.get("pdf_classification"),
+                "native_insights": result.get("native_insights", self._build_public_native_insights()),
             }
 
         if suffix in image_extensions:
@@ -3249,6 +3311,7 @@ class DiagramAnalysisOrchestratorPro:
                 "images_processed": result.get("images_processed", 1),
                 "visual_elements": result.get("visual_elements", 0),
                 "intermediate_dir": result.get("intermediate_dir"),
+                "native_insights": result.get("native_insights", self._build_public_native_insights()),
             }
 
         raise ValueError(
@@ -3309,6 +3372,7 @@ class DiagramAnalysisOrchestratorPro:
             "images_processed": result.get("images_processed", len(image_paths)),
             "visual_elements": result.get("visual_elements", 0),
             "intermediate_dir": result.get("intermediate_dir"),
+            "native_insights": result.get("native_insights", self._build_public_native_insights()),
         }
     
     
@@ -3618,7 +3682,8 @@ class DiagramAnalysisOrchestratorPro:
                         types = ", ".join(t for t, _ in summary.get("top_diagram_types", [])) or "unknown"
                         refs = ", ".join(summary.get("top_references", [])) or "none"
                         pages = ",".join(str(p + 1) for p in summary.get("page_span", []))
-                        final_summary += f"  • {sheet_id}: pages {pages or '-'} | types {types} | refs {refs}\n"
+                        links = ", ".join(summary.get("linked_sheets", [])[:3]) or "none"
+                        final_summary += f"  • {sheet_id}: pages {pages or '-'} | types {types} | refs {refs} | links {links}\n"
                     final_summary += "\n"
 
                 if self.quality_summary:
@@ -3685,7 +3750,8 @@ class DiagramAnalysisOrchestratorPro:
             "visual_elements": total_elements,
             "analysis_type": "o3-pro enhanced image analysis",
             "model_used": self.deployment_name,
-            "intermediate_dir": str(self.intermediate_dir) if self.intermediate_dir else None
+            "intermediate_dir": str(self.intermediate_dir) if self.intermediate_dir else None,
+            "native_insights": self._build_public_native_insights(),
         }
     
     async def analyze_document(self, pdf_path: str, domain: str = "general", auto_plan: bool = True) -> Dict[str, Any]:
@@ -3830,7 +3896,8 @@ class DiagramAnalysisOrchestratorPro:
                     types = ", ".join(t for t, _ in summary.get("top_diagram_types", [])) or "unknown"
                     refs = ", ".join(summary.get("top_references", [])) or "none"
                     pages = ",".join(str(p + 1) for p in summary.get("page_span", []))
-                    final_summary += f"  • {sheet_id}: pages {pages or '-'} | types {types} | refs {refs}\n"
+                    links = ", ".join(summary.get("linked_sheets", [])[:3]) or "none"
+                    final_summary += f"  • {sheet_id}: pages {pages or '-'} | types {types} | refs {refs} | links {links}\n"
                 final_summary += "\n"
 
             if self.quality_summary:
@@ -3888,6 +3955,7 @@ class DiagramAnalysisOrchestratorPro:
             "analysis_type": "o3-pro enhanced",
             "model_used": self.deployment_name,
             "intermediate_dir": str(self.intermediate_dir) if self.intermediate_dir else None,
+            "native_insights": self._build_public_native_insights(),
             "pdf_classification": diagnostics.get("pdf_classification", "unknown"),
             "pdf_routing_primary": routing_plan.get("recommended_primary", "pymupdf"),
             "pdf_routing_fallback": routing_plan.get("recommended_fallback", "none"),
@@ -4081,6 +4149,14 @@ class DiagramAnalysisOrchestratorPro:
         query_summary_lines = query_context_summary.get("summary_lines", []) if isinstance(query_context_summary, dict) else []
         if query_summary_lines:
             context_text += "\n\n=== QUERY CONTEXT SIGNALS ===\n" + "\n".join(f"- {line}" for line in query_summary_lines)
+        anomaly_summary = self.insight_summary.get("anomaly_detection", {}) if isinstance(self.insight_summary, dict) else {}
+        anomaly_lines = anomaly_summary.get("summary_lines", []) if isinstance(anomaly_summary, dict) else []
+        if anomaly_lines:
+            context_text += "\n\n=== RULE-BASED ANOMALY SIGNALS ===\n" + "\n".join(f"- {line}" for line in anomaly_lines[:3])
+        graph_summary = self.insight_summary.get("cross_sheet_graph", {}) if isinstance(self.insight_summary, dict) else {}
+        graph_lines = graph_summary.get("summary_lines", []) if isinstance(graph_summary, dict) else []
+        if graph_lines:
+            context_text += "\n\n=== CROSS-SHEET GRAPH SIGNALS ===\n" + "\n".join(f"- {line}" for line in graph_lines[:3])
 
         # ── Few-shot block: inject up to 3 most recent Q&A exchanges ──
         few_shot_block = ""

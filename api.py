@@ -446,6 +446,7 @@ async def upload_document(
             ),
             "chunks": result.get("chunks", 0) if result else 0,
             "images_processed": result.get("images_processed", 0) if result else 0,
+            "native_insights": result.get("native_insights", {}) if result else {},
         }
 
     except Exception as e:
@@ -1070,7 +1071,11 @@ async def analyze_pid(request: PIDAnalysisRequest):
 
     try:
         agent: _PIDAgent = _create_pid()
-        kwargs: Dict[str, Any] = {"sheet_id": request.sheet_id or "sheet_1"}
+        kwargs: Dict[str, Any] = {
+            "sheet_id": request.sheet_id or "sheet_1",
+            "enable_ocr": request.enable_ocr if request.enable_ocr is not None else True,
+            "enable_graph": request.enable_graph if request.enable_graph is not None else True,
+        }
         if request.image_base64:
             kwargs["image_bytes"] = base64.b64decode(request.image_base64)
         else:

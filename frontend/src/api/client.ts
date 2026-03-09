@@ -10,6 +10,7 @@ import type {
   DynamicAgentSpec,
   EnsureDynamicAgentResponse,
   RunDynamicAgentResponse,
+  PIDAnalysisResult,
 } from '../types';
 
 // Configure base URL for your Python backend
@@ -178,6 +179,40 @@ export const api = {
 
   async getDynamicAgentLineage(agentId: string): Promise<Record<string, unknown>> {
     const response = await apiClient.get(`/dynamic-agents/${agentId}/lineage`);
+    return response.data;
+  },
+
+  // P&ID Digitization — upload an image file and run the 5-stage pipeline
+  async uploadPIDImage(
+    file: File,
+    onProgress?: (progress: number) => void,
+  ): Promise<PIDAnalysisResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post<PIDAnalysisResult>('/upload/pid', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000, // P&ID pipeline can be slow
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          onProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+        }
+      },
+    });
+    return response.data;
+  },
+
+  // P&ID Digitization — analyze an already-uploaded image by path or base64
+  async analyzePID(request: {
+    image_path?: string;
+    image_base64?: string;
+    filename?: string;
+    sheet_id?: string;
+    enable_ocr?: boolean;
+    enable_graph?: boolean;
+  }): Promise<PIDAnalysisResult> {
+    const response = await apiClient.post<PIDAnalysisResult>('/analyze/pid', request, {
+      timeout: 300000,
+    });
     return response.data;
   },
 };

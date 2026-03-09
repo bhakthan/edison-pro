@@ -2,9 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   CloudUpload, FileText, CheckCircle, Loader2,
   AlertCircle, FileImage, RefreshCw, MessageSquare, LayoutTemplate,
+  Network, ShieldAlert, Activity, Link2,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { AnalysisStatus } from '../types';
+import { NativeInsightsGraph } from './NativeInsightsGraph';
 
 interface UploadPanelProps {
   activeDocument: string | null;
@@ -23,9 +25,11 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
   const [uploadStatus, setUploadStatus] = useState<AnalysisStatus | null>(null);
   const [documents, setDocuments] = useState<string[]>([]);
   const [error, setError] = useState('');
+  const [selectedAnomalyIndex, setSelectedAnomalyIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadDocuments(); }, []);
+  useEffect(() => { setSelectedAnomalyIndex(null); }, [uploadStatus?.filename, uploadStatus?.file_count, uploadStatus?.message]);
 
   const loadDocuments = async () => {
     try {
@@ -95,6 +99,23 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
   };
 
   const isReady = !!uploadStatus || !!activeDocument;
+  const nativeInsights = uploadStatus?.native_insights;
+  const graph = nativeInsights?.cross_sheet_graph;
+  const anomaly = nativeInsights?.anomaly_detection;
+  const graphEdges = graph?.edges ?? [];
+  const connectorHubs = graph?.connector_hubs ?? [];
+  const graphLines = graph?.summary_lines ?? [];
+  const anomalyLines = anomaly?.summary_lines ?? [];
+  const anomalies = anomaly?.anomalies ?? [];
+  const topFailureTypes = anomaly?.top_failure_types ?? [];
+  const topMeasurements = nativeInsights?.measurement_frequency ?? [];
+  const topStandards = nativeInsights?.standard_frequency ?? [];
+  const topTags = nativeInsights?.tag_frequency ?? [];
+  const sheetHints = nativeInsights?.sheet_correlation_hints ?? [];
+  const riskPercent = anomaly ? Math.round((anomaly.risk_score ?? 0) * 100) : 0;
+  const selectedAnomaly = selectedAnomalyIndex !== null ? anomalies[selectedAnomalyIndex] : null;
+  const focusedSheets = selectedAnomaly?.sheet_id ? [selectedAnomaly.sheet_id] : [];
+  const highlightedSignals = selectedAnomaly?.signals ?? [];
 
   return (
     <div className="flex flex-col gap-8 max-w-3xl mx-auto py-10 px-4 w-full">
@@ -229,6 +250,206 @@ export function UploadPanel({ activeDocument, onDocumentReady, onGoToChat, onGoT
         <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <p className="text-sm">{error}</p>
+        </div>
+      )}
+
+      {uploadStatus && nativeInsights && (
+        <div className="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
+          <div className="flex items-start justify-between gap-4 mb-5">
+            <div>
+              <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">
+                Native Insights
+              </h3>
+              <p className="text-sm text-slate-600">
+                Deterministic engineering signals extracted during upload.
+              </p>
+            </div>
+            <span className="px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700">
+              {nativeInsights.backend || 'unknown'}
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-4 mb-6">
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
+              <div className="flex items-center gap-2 text-amber-700 mb-2">
+                <ShieldAlert className="w-4 h-4" />
+                <span className="text-xs font-semibold uppercase tracking-wide">Risk</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-900">{riskPercent}%</p>
+              <p className="text-xs text-slate-600 mt-1">{anomaly?.anomaly_count ?? 0} anomaly candidates</p>
+            </div>
+            <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
+              <div className="flex items-center gap-2 text-blue-700 mb-2">
+                <Network className="w-4 h-4" />
+                <span className="text-xs font-semibold uppercase tracking-wide">Sheet Links</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-900">{graphEdges.length}</p>
+              <p className="text-xs text-slate-600 mt-1">weighted cross-sheet edges</p>
+            </div>
+            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+              <div className="flex items-center gap-2 text-emerald-700 mb-2">
+                <Activity className="w-4 h-4" />
+                <span className="text-xs font-semibold uppercase tracking-wide">Measurements</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-900">{topMeasurements.length}</p>
+              <p className="text-xs text-slate-600 mt-1">top recurring engineering values</p>
+            </div>
+            <div className="p-4 rounded-xl bg-violet-50 border border-violet-200">
+              <div className="flex items-center gap-2 text-violet-700 mb-2">
+                <Link2 className="w-4 h-4" />
+                <span className="text-xs font-semibold uppercase tracking-wide">Connector Hubs</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-900">{connectorHubs.length}</p>
+              <p className="text-xs text-slate-600 mt-1">shared references and tags</p>
+            </div>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <h4 className="text-sm font-semibold text-slate-900 mb-3">Cross-Sheet Graph</h4>
+              <NativeInsightsGraph
+                edges={graphEdges}
+                sheetHints={sheetHints}
+                focusSheetIds={focusedSheets}
+                highlightSignals={highlightedSignals}
+              />
+
+              {graphLines.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {graphLines.slice(0, 2).map((line, index) => (
+                    <div key={`${line}-${index}`} className="text-sm text-slate-700 rounded-lg bg-white border border-slate-200 px-3 py-2">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {connectorHubs.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Connector hubs</p>
+                  <div className="flex flex-wrap gap-2">
+                    {connectorHubs.slice(0, 6).map((hub) => (
+                      <span
+                        key={`${hub.kind}-${hub.signal}`}
+                        className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold border border-blue-200"
+                      >
+                        {hub.signal} · {hub.kind} · {hub.sheet_count} sheets
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <h4 className="text-sm font-semibold text-slate-900 mb-3">Rule-Based Review</h4>
+              {anomalyLines.length > 0 ? (
+                <div className="space-y-2 mb-4">
+                  {anomalyLines.slice(0, 3).map((line, index) => (
+                    <div key={`${line}-${index}`} className="text-sm text-slate-700 rounded-lg bg-white border border-slate-200 px-3 py-2">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500 mb-4">No anomaly summary available for this upload.</p>
+              )}
+
+              {topFailureTypes.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Top failure types</p>
+                  <div className="space-y-2">
+                    {topFailureTypes.slice(0, 4).map(([failureType, count]) => (
+                      <div key={failureType} className="flex items-center justify-between text-sm bg-white border border-slate-200 rounded-lg px-3 py-2">
+                        <span className="font-medium text-slate-800">{failureType}</span>
+                        <span className="text-slate-500">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {anomalies.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Focus graph by anomaly</p>
+                    {selectedAnomalyIndex !== null && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAnomalyIndex(null)}
+                        className="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                      >
+                        Clear focus
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {anomalies.slice(0, 5).map((item, index) => {
+                      const isSelected = selectedAnomalyIndex === index;
+                      return (
+                        <button
+                          key={`${item.failure_type}-${item.sheet_id}-${index}`}
+                          type="button"
+                          onClick={() => setSelectedAnomalyIndex(index)}
+                          className={`w-full rounded-lg border px-3 py-3 text-left transition-colors ${isSelected ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white hover:border-red-200 hover:bg-slate-50'}`}
+                        >
+                          <div className="flex items-center justify-between gap-3 mb-1">
+                            <span className="text-sm font-semibold text-slate-900">{item.failure_type || 'unknown_anomaly'}</span>
+                            <span className={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${item.severity === 'critical' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+                              {item.severity || 'unknown'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mb-2">
+                            Sheet {item.sheet_id || 'unknown'} · confidence {Math.round((item.confidence ?? 0) * 100)}%
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {(item.signals ?? []).slice(0, 4).map((signal) => (
+                              <span key={`${item.failure_type}-${signal}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                                {signal}
+                              </span>
+                            ))}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3 mt-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Measurements</p>
+              <div className="flex flex-wrap gap-2">
+                {topMeasurements.slice(0, 5).map(([value, count]) => (
+                  <span key={value} className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200">
+                    {value} · {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Standards</p>
+              <div className="flex flex-wrap gap-2">
+                {topStandards.slice(0, 5).map(([value, count]) => (
+                  <span key={value} className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-semibold border border-indigo-200">
+                    {value} · {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Tags</p>
+              <div className="flex flex-wrap gap-2">
+                {topTags.slice(0, 5).map(([value, count]) => (
+                  <span key={value} className="px-2.5 py-1 rounded-full bg-violet-100 text-violet-800 text-xs font-semibold border border-violet-200">
+                    {value} · {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

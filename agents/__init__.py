@@ -123,6 +123,12 @@ __all__ = [
     'create_anomaly_predictor',
     'RevisionAnalyzerAgent',
     'create_revision_analyzer',
+    'QuerySuggestionAgent',
+    'create_query_suggestion_agent',
+    'ExpertNetworkAgent',
+    'create_expert_network',
+    'CounterfactualSimulator',
+    'create_counterfactual_simulator',
     # Phase 3 Enhancements
     'FeedbackTracker',
     'FeedbackEvent',
