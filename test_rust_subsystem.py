@@ -15,12 +15,14 @@ SAMPLE_PNG_BASE64 = (
 
 
 class RustSubsystemImageExtractionTests(unittest.TestCase):
-    def _with_production_runtime(self) -> RustParallelSubsystem:
+    def _with_enabled_subsystem(self) -> RustParallelSubsystem:
         previous_runtime = os.environ.get("EDISON_RUNTIME_PROFILE")
         os.environ["EDISON_RUNTIME_PROFILE"] = "production"
         self.addCleanup(self._restore_runtime, previous_runtime)
+        return RustParallelSubsystem()
 
-        subsystem = RustParallelSubsystem()
+    def _with_production_runtime(self) -> RustParallelSubsystem:
+        subsystem = self._with_enabled_subsystem()
         if not subsystem.native_available:
             self.skipTest("Native Rust extension is not installed")
         return subsystem
@@ -70,6 +72,93 @@ class RustSubsystemImageExtractionTests(unittest.TestCase):
                 [str(second_path), str(first_path)],
             )
             self.assertEqual([page.get("page_num") for page in page_data], [0, 1])
+
+    def test_analyze_chunks_extracts_engineering_signals(self) -> None:
+        subsystem = self._with_enabled_subsystem()
+
+        chunks = [
+            {
+                "chunk_id": "chunk_001",
+                "content": "Panel MCC-101 operates at 480V and follows IEEE 1584 arc flash guidance.",
+                "metadata": {
+                    "chunk_id": "chunk_001",
+                    "page_numbers": [0],
+                    "diagram_type": "electrical",
+                    "reference_numbers": ["MCC-101"],
+                    "components": ["panel", "breaker"],
+                    "source_file": "sheet_a.png",
+                },
+            },
+            {
+                "chunk_id": "chunk_002",
+                "content": "Pump P-201 discharge pressure is 125 psi per ASME B31.3.",
+                "metadata": {
+                    "chunk_id": "chunk_002",
+                    "page_numbers": [1],
+                    "diagram_type": "pid",
+                    "reference_numbers": ["P-201"],
+                    "components": ["pump"],
+                    "source_file": "sheet_b.png",
+                },
+            },
+        ]
+
+        result = subsystem.analyze_chunks(chunks, {})
+
+        self.assertIn(result.get("backend"), {"rust-native", "python-fallback"})
+        self.assertTrue(any(item[0] == "480V" for item in result.get("measurement_frequency", [])))
+        self.assertTrue(any(item[0] == "125 psi" for item in result.get("measurement_frequency", [])))
+        self.assertTrue(any(item[0] == "IEEE 1584" for item in result.get("standard_frequency", [])))
+        self.assertTrue(any(item[0] == "ASME B31.3" for item in result.get("standard_frequency", [])))
+        self.assertTrue(any(item[0] == "MCC-101" for item in result.get("tag_frequency", [])))
+        self.assertTrue(any(item[0] == "P-201" for item in result.get("tag_frequency", [])))
+
+    def test_prepare_query_context_surfaces_engineering_signals(self) -> None:
+        subsystem = self._with_enabled_subsystem()
+
+        chunks = [
+            {
+                "chunk_id": "chunk_001",
+                "content": "Panel MCC-101 operates at 480V and follows IEEE 1584 arc flash guidance.",
+                "metadata": {
+                    "chunk_id": "chunk_001",
+                    "page_numbers": [0],
+                    "diagram_type": "electrical",
+                    "reference_numbers": ["MCC-101"],
+                    "components": ["panel", "breaker"],
+                    "source_file": "sheet_a.png",
+                },
+            },
+            {
+                "chunk_id": "chunk_002",
+                "content": "Pump P-201 discharge pressure is 125 psi per ASME B31.3.",
+                "metadata": {
+                    "chunk_id": "chunk_002",
+                    "page_numbers": [1],
+                    "diagram_type": "pid",
+                    "reference_numbers": ["P-201"],
+                    "components": ["pump"],
+                    "source_file": "sheet_b.png",
+                },
+            },
+        ]
+
+        insight_summary = subsystem.analyze_chunks(chunks, {})
+        query_context = subsystem.prepare_query_context(
+            "What does IEEE 1584 require for MCC-101 at 480V?",
+            chunks,
+            insight_summary,
+        )
+
+        self.assertIn(query_context.get("backend"), {"rust-native", "python-fallback"})
+        ranked_chunks = query_context.get("ranked_chunks", [])
+        self.assertTrue(ranked_chunks)
+        self.assertEqual(ranked_chunks[0].get("chunk_id"), "chunk_001")
+        self.assertIn("480V", query_context.get("focus_measurements", []))
+        self.assertIn("IEEE 1584", query_context.get("focus_standards", []))
+        summary_lines = "\n".join(query_context.get("summary_lines", []))
+        self.assertIn("measurements", summary_lines.lower())
+        self.assertIn("standards", summary_lines.lower())
 
 
 if __name__ == "__main__":

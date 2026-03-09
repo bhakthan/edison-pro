@@ -654,6 +654,9 @@ class ContextManagerPro:
         
         # Local cache for chunks
         self.chunk_store: Dict[str, Dict[str, Any]] = {}
+        self.rust_subsystem = RustParallelSubsystem() if RustParallelSubsystem else None
+        self.insight_summary: Dict[str, Any] = {}
+        self.latest_query_context: Dict[str, Any] = {}
         
         # Staging buffer for Azure Search (deferred upload)
         self.pending_documents: List[Dict[str, Any]] = []
@@ -661,6 +664,10 @@ class ContextManagerPro:
         # Fallback storage
         self.fallback_embeddings: Dict[str, List[float]] = {}
         self.fallback_documents: Dict[str, str] = {}
+
+    def set_insight_summary(self, insight_summary: Optional[Dict[str, Any]]) -> None:
+        self.insight_summary = insight_summary or {}
+        self.latest_query_context = {}
 
     def count_tokens(self, text: str) -> int:
         """Count tokens in text using tiktoken or fallback"""
@@ -816,6 +823,32 @@ class ContextManagerPro:
                 relevant_chunks = self._fallback_search(query, max_chunks)
         else:
             relevant_chunks = self._fallback_search(query, max_chunks)
+
+        if relevant_chunks and self.insight_summary and self.rust_subsystem:
+            try:
+                query_context = self.rust_subsystem.prepare_query_context(query, relevant_chunks, self.insight_summary)
+                self.latest_query_context = query_context or {}
+                ranked_chunks = query_context.get("ranked_chunks", []) if isinstance(query_context, dict) else []
+                if ranked_chunks:
+                    rank_order = {
+                        item.get("chunk_id"): index
+                        for index, item in enumerate(ranked_chunks)
+                        if item.get("chunk_id")
+                    }
+                    relevant_chunks = sorted(
+                        relevant_chunks,
+                        key=lambda chunk: rank_order.get(
+                            getattr(chunk.get("metadata"), "chunk_id", None)
+                            if isinstance(chunk.get("metadata"), ChunkMetadata)
+                            else chunk.get("chunk_id"),
+                            len(rank_order),
+                        ),
+                    )
+            except Exception as exc:
+                print(f"⚠️  Rust query-context reranking failed: {exc}")
+                self.latest_query_context = {}
+        else:
+            self.latest_query_context = {}
         
         return relevant_chunks
     
@@ -2918,6 +2951,7 @@ class DiagramAnalysisOrchestratorPro:
         self.analysis_plan = None  # Will be set by planning phase
         self.sheet_correlations = {}
         self.quality_summary = {}
+        self.insight_summary = {}
         # Q&A history for few-shot injection (most recent exchanges first)
         self.qa_history: list = []  # List of (question, answer) tuples
     
@@ -3071,6 +3105,42 @@ class DiagramAnalysisOrchestratorPro:
                 refs = ", ".join(summary["top_references"]) or "none"
                 pages = ",".join(str(p + 1) for p in summary["page_span"])
                 print(f"      • {sheet_id}: pages {pages} | types {types} | refs {refs}")
+
+    def _refresh_native_insights(self, chunks: List[Dict[str, Any]]) -> None:
+        rust_subsystem = RustParallelSubsystem() if RustParallelSubsystem else None
+        if not rust_subsystem or not chunks:
+            self.insight_summary = {}
+            self.context_manager.set_insight_summary({})
+            return
+
+        try:
+            insight_summary = rust_subsystem.analyze_chunks(chunks, self.visual_elements_by_chunk)
+            self.insight_summary = insight_summary or {}
+            self.context_manager.set_insight_summary(self.insight_summary)
+
+            sheet_hints = self.insight_summary.get("sheet_correlation_hints", []) if isinstance(self.insight_summary, dict) else []
+            if sheet_hints:
+                self.sheet_correlations = {
+                    hint.get("sheet_id", f"sheet_{index}"): {
+                        "page_span": hint.get("page_span", []),
+                        "top_diagram_types": [],
+                        "top_references": hint.get("top_references", []),
+                        "top_standards": hint.get("top_standards", []),
+                        "total_components": len(hint.get("top_components", [])),
+                    }
+                    for index, hint in enumerate(sheet_hints)
+                }
+
+            if self.insight_summary and self.insight_summary.get("backend") != "disabled":
+                measurements = ", ".join(item for item, _ in self.insight_summary.get("measurement_frequency", [])[:3]) or "none"
+                standards = ", ".join(item for item, _ in self.insight_summary.get("standard_frequency", [])[:3]) or "none"
+                print("   ⚙️  Native chunk insight analysis ready:")
+                print(f"      • Measurements: {measurements}")
+                print(f"      • Standards: {standards}")
+        except Exception as exc:
+            print(f"   ⚠️  Native chunk insight analysis unavailable: {exc}")
+            self.insight_summary = {}
+            self.context_manager.set_insight_summary({})
 
     def _aggregate_quality_metrics(self, visual_results: List[Dict[str, Any]]):
         """Aggregate drawing quality metrics from visual analysis."""
@@ -3348,6 +3418,7 @@ class DiagramAnalysisOrchestratorPro:
             print(f"   ✓ Extracted {total_elements} visual elements with enhanced reasoning")
             self._aggregate_quality_metrics(visual_results)
             self._print_quality_summary()
+            self._refresh_native_insights(chunks)
             
             # Stage 3: Build Context Index with Enhanced Embeddings
             print("💾 Stage 3: Building enhanced context index...")
@@ -3716,6 +3787,7 @@ class DiagramAnalysisOrchestratorPro:
         print(f"   ✓ Extracted {total_elements} visual elements with enhanced reasoning")
         self._aggregate_quality_metrics(visual_results)
         self._print_quality_summary()
+        self._refresh_native_insights(chunks)
         
         # Stage 3: Build Context Index with Enhanced Embeddings
         print("💾 Stage 3: Building enhanced context index...")
@@ -3985,6 +4057,7 @@ class DiagramAnalysisOrchestratorPro:
         relevant_chunks = self.context_manager.retrieve_relevant_context(
             question, max_chunks=max_chunks
         )
+        query_context_summary = self.context_manager.latest_query_context or {}
 
         if not relevant_chunks:
             source_hint = "Azure AI Search index" if has_remote_index else "local analysis cache"
@@ -4005,6 +4078,9 @@ class DiagramAnalysisOrchestratorPro:
             f"Chunk {c['metadata'].chunk_id} (Pages {c['metadata'].page_numbers}):\n{c['content'][:1500]}"
             for c in relevant_chunks
         ])
+        query_summary_lines = query_context_summary.get("summary_lines", []) if isinstance(query_context_summary, dict) else []
+        if query_summary_lines:
+            context_text += "\n\n=== QUERY CONTEXT SIGNALS ===\n" + "\n".join(f"- {line}" for line in query_summary_lines)
 
         # ── Few-shot block: inject up to 3 most recent Q&A exchanges ──
         few_shot_block = ""
