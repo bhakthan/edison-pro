@@ -49,6 +49,17 @@ except ImportError:
     HAS_OPENAI = False
 
 try:
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider as _get_token_provider
+    _PID_TOKEN_PROVIDER = _get_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default"
+    )
+    HAS_AZURE_IDENTITY = True
+except Exception:
+    _PID_TOKEN_PROVIDER = None
+    HAS_AZURE_IDENTITY = False
+
+try:
     from azure.ai.documentintelligence import DocumentIntelligenceClient
     from azure.core.credentials import AzureKeyCredential
     HAS_AZURE_DI = True
@@ -882,8 +893,13 @@ class PIDDigitizationAgent:
                 os.getenv("AZURE_OPENAI_PRO_API_VERSION") or
                 os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
             )
-            if endpoint and api_key:
-                client = AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_ver)
+            if endpoint:
+                _kwargs = {"azure_endpoint": endpoint, "api_version": api_ver}
+                if api_key:
+                    _kwargs["api_key"] = api_key
+                elif HAS_AZURE_IDENTITY:
+                    _kwargs["azure_ad_token_provider"] = _PID_TOKEN_PROVIDER
+                client = AzureOpenAI(**_kwargs)
         # Use the best available deployment — gpt-5-pro for complex P&IDs, gpt-5.4 for standard
         vision_deployment = (
             os.getenv("AZURE_OPENAI_PRO_DEPLOYMENT_NAME") or

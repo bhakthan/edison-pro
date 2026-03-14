@@ -317,14 +317,14 @@ html[data-theme='dark'] {
 .theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  justify-content: center;
   border: 1px solid var(--border-soft);
   border-radius: 999px;
   background: var(--bg-elevated);
   color: var(--text-primary);
-  padding: 0.46rem 0.78rem;
-  font-size: 0.76rem;
-  font-weight: 620;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }

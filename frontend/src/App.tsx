@@ -336,7 +336,7 @@ function App() {
               title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             >
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-              <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+              <span className="sr-only">{theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}</span>
             </button>
             {messages.length > 0 && (
               <button

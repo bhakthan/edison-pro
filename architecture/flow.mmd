@@ -1,184 +1,107 @@
-%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'12px'}}}%%
 flowchart LR
-    subgraph Input["📥 INPUT LAYER"]
-        UserInput["User provides:<br/>• PDF file or<br/>• Image folder or<br/>• Azure Blob Container"]
-        BlobInput["☁️ <b>Azure Blob Storage</b><br/>(Optional Input)<br/>────────────<br/>• Download from container<br/>• Filter by prefix/extensions<br/>• Parallel downloads (4 workers)<br/>• Managed Identity support"]
-        CLI["Command Line Interface<br/>python edisonpro.py"]
-        UserInput --> CLI
-        UserInput -.->|"--blob-container"| BlobInput
-        BlobInput -.->|"Temp files"| CLI
+    subgraph Clients["Clients & Entry Points"]
+        ReactUI["React UI<br/>Vite + TypeScript<br/>Upload / Chat / Templates / Innovative / Flickering / Dynamic Agents"]
+        GradioUI["Gradio UI<br/>edisonpro_ui.py"]
+        CLI["CLI<br/>edisonpro.py"]
+        BlobInput["Azure Blob Storage<br/>optional input/output"]
+        ReactUI --> FastAPI
+        GradioUI --> FastAPI
+        CLI --> Orchestrator
+        BlobInput -.-> CLI
     end
 
-    subgraph Phase0["🎯 PHASE 0: INTELLIGENT PLANNING"]
-        AutoPlan{"Auto-Planning<br/>Enabled?"}
-        PlanAgent["<b>PlanningAgentPro</b><br/>────────────<br/>• Analyzes first 1-3 pages<br/>• Uses o3-pro LOW reasoning<br/>• Fast reconnaissance (15-30s)"]
-        
-        DetectBox["<b>Detection Phase</b><br/>────────────<br/>✓ Disciplines identified<br/>(civil, electrical, mechanical,<br/>P&ID, structural, hybrid)<br/>✓ Drawing types recognized<br/>(single-line, P&ID, plan-profile)<br/>✓ Complexity assessed<br/>(simple/medium/complex)<br/>✓ Key features cataloged<br/>(transformers, instruments, etc.)"]
-        
-        OptimizeBox["<b>Strategy Optimization</b><br/>────────────<br/>→ Reasoning effort recommendation<br/>→ Concurrency settings<br/>→ Focus areas identified<br/>→ Expected challenges noted"]
-        
-        PlanDisplay["📋 <b>Display Analysis Plan</b><br/>────────────<br/>Domain: {detected}<br/>Complexity: {level}<br/>Strategy: {optimized}"]
-        
-        ManualDomain["Use Manual Domain<br/>(--domain flag)"]
-        
-        CLI --> AutoPlan
-        AutoPlan -->|Yes| PlanAgent
-        AutoPlan -->|No| ManualDomain
-        PlanAgent --> DetectBox
-        DetectBox --> OptimizeBox
-        OptimizeBox --> PlanDisplay
+    subgraph API["FastAPI Application"]
+        FastAPI["api.py / api_server.py"]
+        UploadAPI["Upload & Ask<br/>/upload /ask /documents"]
+        TemplateAPI["Templates<br/>/templates /templates/execute"]
+        FeatureAPI["Innovative + Flickering + PID<br/>/predict-anomalies /expert-review /analyze/flickering /upload/pid"]
+        DynamicAPI["Dynamic Agents<br/>/dynamic-agents/status /ensure /run /lineage"]
+        ResultsAPI["Results + Downloads<br/>/generate-results /results/latest /download/*"]
+        FastAPI --> UploadAPI
+        FastAPI --> TemplateAPI
+        FastAPI --> FeatureAPI
+        FastAPI --> DynamicAPI
+        FastAPI --> ResultsAPI
     end
 
-    subgraph Phase1["📄 PHASE 1: DOCUMENT PREPROCESSING"]
-        PreprocessAgent["<b>DocumentPreprocessorPro</b><br/>────────────<br/>• Smart chunking enabled<br/>• Structure analysis with o3-pro<br/>• Parallel page processing<br/>• Metadata extraction"]
-        
-        ADIBox["<b>Azure Document Intelligence</b><br/>────────────<br/>Priority 1: Layout Analysis<br/>✓ OCR extraction (95-99% accuracy)<br/>✓ Table structure detection<br/>✓ Key-value pairs (title blocks)<br/>✓ Reading order preservation<br/>✓ Bounding box coordinates<br/>✓ Confidence scoring"]
-        
-        FallbackBox["<b>Extraction Fallback</b><br/>────────────<br/>Priority 2: MarkItDown OCR<br/>Priority 3: PyMuPDF direct<br/>→ Graceful degradation<br/>→ Always gets content"]
-        
-        ChunkingBox["<b>Intelligent Chunking</b><br/>────────────<br/>✓ Boundary detection<br/>✓ Logical page grouping<br/>✓ Title block analysis<br/>✓ Sheet reference tracking<br/>✓ Diagram type classification"]
-        
-        DiagnosticsBox["<b>Diagnostics Feedback</b><br/>────────────<br/>→ Chunk quality metrics<br/>→ Plan refinement triggers<br/>→ Concurrency adjustments<br/>→ ADI confidence scores"]
-        
-        ChunkStore[("📦 <b>Chunk Store</b><br/>────────────<br/>Intelligent chunks with:<br/>• Content text (ADI-enhanced)<br/>• Structured tables<br/>• Metadata (pages, type)<br/>• Structure analysis<br/>• Cross-references")]
-        
-        PlanDisplay --> PreprocessAgent
-        ManualDomain --> PreprocessAgent
-        PreprocessAgent --> ADIBox
-        ADIBox -->|"Confidence > 30%"| ChunkingBox
-        ADIBox -->|"Low confidence or unavailable"| FallbackBox
-        FallbackBox --> ChunkingBox
-        ChunkingBox --> DiagnosticsBox
-        DiagnosticsBox -.->|"Refine plan"| PlanAgent
-        DiagnosticsBox --> ChunkStore
+    subgraph Core["Document Understanding Pipeline"]
+        Orchestrator["DiagramAnalysisOrchestratorPro"]
+        Planner["PlanningAgentPro<br/>gpt-5-pro via Responses API<br/>domain + complexity + strategy"]
+        Preprocessor["DocumentPreprocessorPro<br/>chunking + metadata + page structure"]
+        ADI["Azure Document Intelligence<br/>layout / OCR / tables / title blocks"]
+        Fallbacks["Fallback extraction<br/>MarkItDown / PyMuPDF / image-first handling"]
+        Visual["VisualElementExtractorPro<br/>vision-based component and symbol extraction"]
+        RustNative["Rust Native Subsystem<br/>parallel image handling<br/>chunk analytics<br/>cross-sheet graph<br/>rule-based anomaly detection"]
+        Context["ContextManagerPro<br/>chunk staging + retrieval context"]
+        Search["Azure AI Search<br/>hybrid vector + keyword index"]
+        NativeInsights["Native Insights Payload<br/>cross-sheet graph + anomaly summary + connector hubs"]
+        Orchestrator --> Planner
+        Planner --> Preprocessor
+        Preprocessor --> ADI
+        ADI --> Visual
+        ADI -.-> Fallbacks
+        Fallbacks --> Visual
+        Visual --> RustNative
+        RustNative --> Context
+        Context --> Search
+        RustNative --> NativeInsights
     end
 
-    subgraph Phase2["👁️ PHASE 2: VISUAL ELEMENT EXTRACTION"]
-        VisualAgent["<b>VisualElementExtractorPro</b><br/>────────────<br/>• Multi-layer visual analysis<br/>• Uses o3-pro with image input<br/>• Engineering symbol recognition<br/>• Quality assessment"]
-        
-        ExtractionBox["<b>Visual Analysis</b><br/>────────────<br/>✓ Symbols & components<br/>✓ Lines & connections<br/>✓ Annotations & labels<br/>✓ Spatial relationships<br/>✓ Engineering significance"]
-        
-        QualityBox["<b>Quality Metrics</b><br/>────────────<br/>→ Drawing clarity<br/>→ Completeness score<br/>→ Standards compliance<br/>→ Ambiguities noted"]
-        
-        VisualStore[("🎨 <b>Visual Elements</b><br/>────────────<br/>Per-chunk storage:<br/>• Extracted elements<br/>• Quality assessment<br/>• System insights<br/>• Analysis summary")]
-        
-        ChunkStore --> VisualAgent
-        VisualAgent --> ExtractionBox
-        ExtractionBox --> QualityBox
-        QualityBox --> VisualStore
+    subgraph Memory["Learning & Retrieval"]
+        MemoryAtlas["Memory Atlas<br/>pattern memory + embeddings + novelty recall"]
+        FlickeringSystem["Flickering System<br/>6-agent cognitive loop<br/>reality vs memory oscillation"]
+        Feedback["Feedback + Analytics + Reports<br/>effectiveness tracking and HTML report generation"]
+        Search <--> MemoryAtlas
+        FlickeringSystem <--> MemoryAtlas
+        FlickeringSystem --> Feedback
     end
 
-    subgraph Phase3["💾 PHASE 3: CONTEXT INDEXING"]
-        ContextAgent["<b>ContextManagerPro</b><br/>────────────<br/>• Azure AI Search integration<br/>• Hybrid search (vector + keyword)<br/>• Embedding generation<br/>• Deferred commit pattern"]
-        
-        EmbedBox["<b>Embedding Generation</b><br/>────────────<br/>✓ Azure OpenAI embeddings<br/>✓ text-embedding-ada-002<br/>✓ Async generation<br/>✓ Batch processing"]
-        
-        StagingBox["<b>Staging Buffer</b><br/>────────────<br/>→ Documents staged in memory<br/>→ Metadata enrichment<br/>→ Validation checks<br/>→ Atomic commit preparation"]
-        
-        AzureSearchBox["<b>Azure AI Search</b><br/>────────────<br/>→ Hybrid search index<br/>→ Vector + BM25 keyword<br/>→ Filtered queries<br/>→ 99.9% SLA uptime"]
-        
-        CommitBox["<b>Commit on Success</b><br/>────────────<br/>✓ Batch upload all documents<br/>✓ Atomic transaction<br/>✓ No partial state<br/>✓ Automatic cleanup"]
-        
-        ChunkStore --> ContextAgent
-        VisualStore --> ContextAgent
-        ContextAgent --> EmbedBox
-        EmbedBox --> StagingBox
-        StagingBox --> AzureSearchBox
-        AzureSearchBox --> CommitBox
+    subgraph Interaction["Reasoning & Agent Layer"]
+        Router["Question Router<br/>understanding vs data/agentic task"]
+        GPTHandler["gpt-5-pro Handler<br/>engineering understanding<br/>reasoning + evidence"]
+        CodeAgent["Azure AI Projects Code Agent<br/>GPT-5.4 + code interpreter<br/>tables / charts / files / calculations"]
+        DynamicRegistry["DynamicMetaAgentRegistry<br/>persistent registry + lineage + evaluation + refinement"]
+        DynamicStudio["Dynamic Agent Studio<br/>autonomous ensure/create/run"]
+        TemplateRunner["Template execution<br/>guided multi-question workflows"]
+        UploadAPI --> Orchestrator
+        TemplateAPI --> TemplateRunner
+        TemplateRunner --> Router
+        UploadAPI --> Router
+        Router --> GPTHandler
+        Router --> CodeAgent
+        CodeAgent -.->|agentic fallback| DynamicRegistry
+        DynamicAPI --> DynamicStudio
+        DynamicStudio --> DynamicRegistry
+        DynamicRegistry --> CodeAgent
+        GPTHandler --> Search
     end
 
-    subgraph Output["📤 OUTPUT LAYER"]
-        Results["<b>Analysis Complete</b><br/>────────────<br/>✓ {N} chunks processed<br/>✓ {M} visual elements<br/>✓ Quality report generated<br/>✓ Intermediate files saved"]
-        
-        IntermediateFiles["📁 <b>Intermediate Files</b><br/>────────────<br/>• 00_analysis_log.txt<br/>• page_XXX_image.png<br/>• structure_analysis.json<br/>• visual_elements.json<br/>• chunk_content.txt<br/>• 99_analysis_complete.txt"]
-        
-        BlobOutput["☁️ <b>Azure Blob Storage</b><br/>(Optional Output)<br/>────────────<br/>• Upload results to container<br/>• Timestamp organization (YYYY-MM-DD)<br/>• Parallel uploads (4 workers)<br/>• Preserve folder structure"]
-        
-        Interactive{"Interactive<br/>Mode?"}
-        
-        CommitBox --> Results
-        Results --> IntermediateFiles
-        Results -.->|"--output-blob-container"| BlobOutput
-        Results --> Interactive
+    subgraph Outputs["Outputs & Demo Surfaces"]
+        ChatOutput["Chat answers<br/>reasoning + evidence"]
+        DataOutput["Tables / charts / CSV / Excel / downloadable files"]
+        UploadReview["Upload review panels<br/>native graph + anomaly focus + failure-type drill-in"]
+        ResultsPage["Comprehensive HTML results page<br/>persisted light/dark theme"]
+        Reports["Innovative feature reports<br/>anomaly / expert review / visual summaries"]
+        GPTHandler --> ChatOutput
+        CodeAgent --> DataOutput
+        NativeInsights --> UploadReview
+        ResultsAPI --> ResultsPage
+        Feedback --> Reports
     end
 
-    subgraph UIMode["💬 INTERACTIVE Q&A MODE"]
-        UIInit["<b>edisonpro_ui.py</b><br/>────────────<br/>Gradio web interface"]
-        
-        TemplateTab["📋 <b>Templates Tab</b><br/>────────────<br/>• 7 predefined workflows<br/>• Guided questions<br/>• Professional outputs"]
-        
-        FlickeringTab["🌊 <b>Flickering Tab</b><br/>────────────<br/>• Cognitive analysis<br/>• Memory Atlas integration<br/>• Novelty detection"]
-        
-        QueryBox["<b>User Question</b><br/>────────────<br/>Engineering query"]
-        
-        AgentRouter{"<b>Agent Router</b><br/>────────────<br/>45 keywords +<br/>8 patterns"}
-        
-        MemoryAtlas[("<b>🧠 Memory Atlas</b><br/>────────────<br/>• Stores learned patterns<br/>• 512-dim embeddings<br/>• Azure AI Search index<br/>• v1→v25 refinement<br/>• 0.5 novelty threshold")]
-        
-        RetrievalAgent["<b>Hybrid Retrieval</b><br/>────────────<br/>• Azure AI Search<br/>• Vector similarity<br/>• BM25 keyword<br/>• Top-K results"]
-        
-        AnswerAgent["<b>o3-pro Handler</b><br/>────────────<br/>• LOW reasoning<br/>• 90s timeout<br/>• Reasoning chain<br/>• Evidence extraction"]
-        
-        CodeAgent["<b>Code Agent</b><br/>(GPT-4.1)<br/>────────────<br/>• Python execution<br/>• Tables/Charts<br/>• CSV/Excel export<br/>• Calculations"]
-        
-        FlickeringSystem["<b>Flickering System</b><br/>────────────<br/>• 6-agent architecture<br/>• Reality vs Memory<br/>• Theta oscillation (8Hz)<br/>• 50-200 cycles<br/>• Mismatch detection"]
-        
-        ResponseBox["<b>Formatter</b><br/>────────────<br/>Answer with<br/>reasoning &<br/>evidence"]
-        
-        DataFormatter["<b>Data Output</b><br/>────────────<br/>HTML tables<br/>Plotly charts<br/>Downloads"]
-        
-        DisplayBox["📺 <b>UI Display</b><br/>────────────<br/>• Answer + reasoning<br/>• Data tables<br/>• Interactive charts<br/>• Download links"]
-        
-        Interactive -->|Yes| UIInit
-        UIInit --> TemplateTab
-        UIInit --> FlickeringTab
-        UIInit --> QueryBox
-        
-        TemplateTab -.->|"Select template"| QueryBox
-        FlickeringTab --> FlickeringSystem
-        FlickeringSystem -->|"High novelty (>0.5)"| MemoryAtlas
-        FlickeringSystem -->|"Pattern stored"| MemoryAtlas
-        MemoryAtlas -.->|"Retrieved patterns"| FlickeringSystem
-        
-        QueryBox --> AgentRouter
-        
-        AgentRouter -->|"Understanding"| RetrievalAgent
-        AgentRouter -->|"Data transform"| CodeAgent
-        
-        RetrievalAgent --> AnswerAgent
-        MemoryAtlas -.->|"Context enrichment"| RetrievalAgent
-        
-        AnswerAgent --> ResponseBox
-        ResponseBox --> DisplayBox
-        
-        CodeAgent --> DataFormatter
-        DataFormatter --> DisplayBox
-        
-        DisplayBox -.->|"Next question"| QueryBox
-        Interactive -->|No| EndNode
-    end
+    FeatureAPI --> FlickeringSystem
+    FeatureAPI --> Reports
+    FeatureAPI --> Orchestrator
+    ReactUI -.->|theme + interactive graph UX| UploadReview
+    BlobInput -.-> ResultsPage
 
-    EndNode["🎉 <b>Analysis & Export Complete</b><br/>────────────<br/>Ready for questions or<br/>additional processing"]
-
-    style Input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-    style Phase0 fill:#fff3e0,stroke:#f57c00,stroke-width:3px
-    style Phase1 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style Phase2 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style Phase3 fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-    style Output fill:#fff9c4,stroke:#f9a825,stroke-width:2px
-    style UIMode fill:#e0f2f1,stroke:#00897b,stroke-width:3px
-    
-    style PlanAgent fill:#bbdefb,stroke:#1976d2,stroke-width:2px
-    style PreprocessAgent fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px
-    style VisualAgent fill:#c5e1a5,stroke:#558b2f,stroke-width:2px
-    style ContextAgent fill:#f8bbd0,stroke:#c2185b,stroke-width:2px
-    style AnswerAgent fill:#b2dfdb,stroke:#00695c,stroke-width:2px
-    
-    style AzureSearchBox fill:#ffccbc,stroke:#d84315,stroke-width:2px
-    style CommitBox fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
-    style BlobInput fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
-    style BlobOutput fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
-    style MemoryAtlas fill:#fff9c4,stroke:#f57c00,stroke-width:3px
-    style FlickeringSystem fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px
-    style TemplateTab fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
-    style FlickeringTab fill:#ffccbc,stroke:#d84315,stroke-width:2px
+    style Clients fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style API fill:#ede7f6,stroke:#5e35b1,stroke-width:2px
+    style Core fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Memory fill:#fff8e1,stroke:#f9a825,stroke-width:2px
+    style Interaction fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style Outputs fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style RustNative fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style DynamicRegistry fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    style DynamicStudio fill:#dcedc8,stroke:#558b2f,stroke-width:2px
+    style ResultsPage fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px

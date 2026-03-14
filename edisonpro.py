@@ -106,6 +106,18 @@ except ImportError:
     print("❌ Error: OpenAI is required. Install with: pip install openai")
     HAS_OPENAI = False
 
+try:
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    _ENTRA_TOKEN_PROVIDER = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default"
+    )
+    HAS_AZURE_IDENTITY = True
+except Exception as _ident_err:
+    print(f"⚠️  azure-identity not available ({_ident_err}). Entra ID auth disabled.")
+    _ENTRA_TOKEN_PROVIDER = None
+    HAS_AZURE_IDENTITY = False
+
 # Azure AI Search imports
 try:
     from azure.core.credentials import AzureKeyCredential
@@ -732,11 +744,16 @@ class ContextManagerPro:
                 # Use dedicated embedding endpoint if available
                 azure_endpoint = os.getenv("AZURE_OPENAI_EMBEDDING_ENDPOINT") or os.getenv("AZURE_OPENAI_ENDPOINT")
                 
-                client = AsyncAzureOpenAI(
-                    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                    api_version=api_version,
-                    azure_endpoint=azure_endpoint
-                )
+                _api_key = os.getenv("AZURE_OPENAI_API_KEY")
+                _client_kwargs = {
+                    "api_version": api_version,
+                    "azure_endpoint": azure_endpoint,
+                }
+                if _api_key:
+                    _client_kwargs["api_key"] = _api_key
+                elif HAS_AZURE_IDENTITY:
+                    _client_kwargs["azure_ad_token_provider"] = _ENTRA_TOKEN_PROVIDER
+                client = AsyncAzureOpenAI(**_client_kwargs)
                 
                 response = loop.run_until_complete(
                     client.embeddings.create(model=embedding_deployment, input=text[:8000])
@@ -2897,7 +2914,7 @@ class DiagramAnalysisOrchestratorPro:
         
         print(f"\n🔧 EDISON PRO Configuration:")
         print(f"   Endpoint: {azure_pro_endpoint[:50] + '...' if azure_pro_endpoint and len(azure_pro_endpoint) > 50 else azure_pro_endpoint or 'NOT SET'}")
-        print(f"   API Key: {'SET' if azure_api_key else 'NOT SET'}")
+        print(f"   API Key: {'SET (key-auth)' if azure_api_key else 'NOT SET → using Entra ID'}")
         print(f"   Deployment: {deployment_name}")
         
         if not azure_pro_endpoint:
@@ -2907,20 +2924,30 @@ class DiagramAnalysisOrchestratorPro:
                 print(f"   Using fallback endpoint: {azure_pro_endpoint[:50]}...")
             else:
                 raise ValueError("Either AZURE_OPENAI_PRO_ENDPOINT or AZURE_OPENAI_ENDPOINT must be set")
-                
-        if not azure_api_key:
-            raise ValueError("AZURE_OPENAI_API_KEY must be set for EDISON Pro")
         
-        # Initialize AzureOpenAI client — sends api-key header (not Bearer token)
+        # Initialize AzureOpenAI client — Entra ID (DefaultAzureCredential) if no api key set
         api_version = os.getenv("AZURE_OPENAI_PRO_API_VERSION") or os.getenv("AZURE_OPENAI_API_VERSION", "2025-03-01-preview")
         
         print(f"   API Version: {api_version}")
+        print(f"   Auth: {'API Key' if azure_api_key else 'Entra ID (DefaultAzureCredential)'}")
         
-        self.client = AzureOpenAI(
-            api_key=azure_api_key,
-            azure_endpoint=azure_pro_endpoint.rstrip('/'),
-            api_version=api_version
-        )
+        if azure_api_key:
+            self.client = AzureOpenAI(
+                api_key=azure_api_key,
+                azure_endpoint=azure_pro_endpoint.rstrip('/'),
+                api_version=api_version
+            )
+        else:
+            if not HAS_AZURE_IDENTITY:
+                raise ValueError(
+                    "Key-based auth is disabled and azure-identity is not available. "
+                    "Install it: pip install azure-identity"
+                )
+            self.client = AzureOpenAI(
+                azure_ad_token_provider=_ENTRA_TOKEN_PROVIDER,
+                azure_endpoint=azure_pro_endpoint.rstrip('/'),
+                api_version=api_version
+            )
 
         self.deployment_name = deployment_name
         self.reasoning_effort = reasoning_effort
@@ -3989,11 +4016,16 @@ class DiagramAnalysisOrchestratorPro:
             api_version = os.getenv("AZURE_OPENAI_PRO_API_VERSION") or os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
             azure_endpoint = os.getenv("AZURE_OPENAI_EMBEDDING_ENDPOINT") or os.getenv("AZURE_OPENAI_ENDPOINT")
             
-            embedding_client = AsyncAzureOpenAI(
-                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                api_version=api_version,
-                azure_endpoint=azure_endpoint
-            )
+            _api_key = os.getenv("AZURE_OPENAI_API_KEY")
+            _emb_kwargs = {
+                "api_version": api_version,
+                "azure_endpoint": azure_endpoint,
+            }
+            if _api_key:
+                _emb_kwargs["api_key"] = _api_key
+            elif HAS_AZURE_IDENTITY:
+                _emb_kwargs["azure_ad_token_provider"] = _ENTRA_TOKEN_PROVIDER
+            embedding_client = AsyncAzureOpenAI(**_emb_kwargs)
             
             response = await embedding_client.embeddings.create(
                 model=embedding_deployment,
